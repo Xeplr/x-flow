@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/workflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Workflows over @xeplr/actions — steps that bind inputs to earlier outputs, branch on conditions, fan out over lists and wait for a person or a job. registerWorkflow() mounts it into a host Express app, or it runs on its own.",
   "main": "index.js",
   "bin": {
