@@ -1,0 +1,71 @@
+{
+  "name": "@xeplr/ui-workflow",
+  "version": "1.0.0",
+  "description": "The screens for @xeplr/workflow — the workflow list, the step builder canvas and the step drawer — as routes a host app registers, or a standalone app",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node test/run.mjs"
+  },
+  "keywords": [
+    "workflow",
+    "builder",
+    "canvas",
+    "react",
+    "routes",
+    "xeplr"
+  ],
+  "author": "xeplr",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xeplr/x-flow",
+    "directory": "ui"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@xeplr/expression-handler": "^1.0.2"
+  },
+  "peerDependencies": {
+    "@xeplr/ui-account": "^1.0.0",
+    "@xeplr/ui-canvas": "^1.0.0",
+    "@xeplr/ui-utils": "^1.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "react-router-dom": "^6.0.0 || ^7.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "@xeplr/actions": "^1.1.0",
+    "@xeplr/db": "^1.0.0",
+    "@xeplr/email": "^1.0.0",
+    "@xeplr/ui-account": "^1.0.2",
+    "@xeplr/ui-canvas": "^1.0.0",
+    "@xeplr/ui-utils": "^1.0.2",
+    "@xeplr/utils": "^1.0.0",
+    "knex": "^3.0.0",
+    "pg": "^8.20.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.2",
+    "vite": "^7.3.1"
+  },
+  "xeplr": {
+    "tagPrefix": "ui-workflow-v",
+    "releasePaths": [
+      "ui"
+    ]
+  }
+}

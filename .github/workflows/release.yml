@@ -1,0 +1,136 @@
+# Release: bumps, publishes to npm, pushes commit + tag — for each package in
+# this repo that needs it. Two packages live here:
+#
+#   @xeplr/workflow      the root        tags workflow-v<version>
+#   @xeplr/ui-workflow   ui/             tags ui-workflow-v<version>
+#
+# Each package's `xeplr` field in its package.json says its tag prefix and its
+# paths (the root's excludes ui/), and a package is released only when its own
+# paths changed since its last tag — a UI fix never bumps the backend.
+#
+# Runs on every push to main (patch bump, every package that changed), and
+# manually from Actions → Release → Run workflow: a bump (patch/minor/major)
+# and which package (`changed`, `workflow`, `ui-workflow`). The workspace's
+# release-os.sh / release-all.yml dispatch it with the package named.
+#
+# Per package, in order:
+#   1. install + test            ← a failure means nothing is bumped
+#   2. bump package.json         (npm version --no-git-tag-version: npm tags only
+#                                 at a repo root, and two packages need two tags)
+#   3. publish to npm            ← if this fails, nothing is pushed → clean rollback
+#   4. commit + tag + push       ← the record of the release
+#
+# ── why this does not loop forever ──────────────────────────────────────────
+# Pushes made with GITHUB_TOKEN do not start workflows, and — belt and braces —
+# the job is skipped when the head commit is itself a release commit
+# ("Release @xeplr/…"). `[skip release]` in a commit message also skips it.
+#
+# Concurrency is serialised, not cancelled: cancelling could abandon a run that
+# had published to npm but not pushed its tag.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options: [patch, minor, major]
+      package:
+        description: 'Which package'
+        required: true
+        default: 'changed'
+        type: choice
+        options: [changed, workflow, ui-workflow]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: >-
+      !startsWith(github.event.head_commit.message, 'Release ') &&
+      !contains(github.event.head_commit.message, '[skip release]')
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure git as github-actions bot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Release each package that needs it
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          BUMP: ${{ inputs.bump || 'patch' }}
+          WHICH: ${{ inputs.package || 'changed' }}
+        run: |
+          set -euo pipefail
+          ROOT="$PWD"
+          echo "### Release" >> $GITHUB_STEP_SUMMARY
+
+          release_one () {
+            local short="$1" dir="$2"
+            cd "$ROOT/$dir"
+            local name prefix ver tag paths
+            name=$(node -p "require('./package.json').name")
+            prefix=$(node -p "require('./package.json').xeplr.tagPrefix")
+            ver=$(node -p "require('./package.json').version")
+            tag="$prefix$ver"
+            # Pathspecs are relative to the repo root.
+            mapfile -t paths < <(node -p "require('./package.json').xeplr.releasePaths.join('\n')")
+
+            if [ "$WHICH" = changed ]; then
+              if git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+                if git -C "$ROOT" diff --quiet "$tag" HEAD -- "${paths[@]}"; then
+                  echo "- $name: nothing changed since $tag" >> $GITHUB_STEP_SUMMARY
+                  return 0
+                fi
+              fi
+            elif [ "$WHICH" != "$short" ]; then
+              return 0
+            fi
+
+            if [ -f package-lock.json ]; then
+              npm ci --ignore-scripts || npm install --ignore-scripts
+            else
+              npm install --ignore-scripts
+            fi
+
+            if node -e "process.exit((require('./package.json').scripts||{}).test ? 0 : 1)"; then
+              npm test
+            else
+              echo "::warning::$name has no test script — nothing verified before publishing."
+            fi
+
+            npm version "$BUMP" --no-git-tag-version
+            ver=$(node -p "require('./package.json').version")
+            npm publish --access public
+
+            cd "$ROOT"
+            git add "$dir/package.json" "$dir/package-lock.json" 2>/dev/null || git add "$dir/package.json"
+            git commit -m "Release $name v$ver"
+            git tag "$prefix$ver"
+            git push origin HEAD:main "$prefix$ver"
+            echo "- **$name@$ver** — https://www.npmjs.com/package/$name" >> $GITHUB_STEP_SUMMARY
+          }
+
+          release_one workflow .
+          release_one ui-workflow ui

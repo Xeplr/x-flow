@@ -1,0 +1,74 @@
+# Tests and coverage on every push and pull request — for BOTH packages in
+# this repo: @xeplr/workflow (the root) and @xeplr/ui-workflow (ui/).
+#
+# The standard xeplr-os ci.yml, run once per package folder. Each folder
+# installs its own dependencies (they are separate packages, with separate
+# lockfiles), and its tests are the test/*.test.* files INSIDE that folder —
+# the backend's discovery must not pick up ui/test/, whose dependencies the
+# root does not install.
+#
+# Coverage comes from Node's own --experimental-test-coverage as lcov, uploaded
+# to Codecov with a flag per package. Node 24: the lcov reporter needs 22+.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: workflow
+            dir: .
+          - package: ui-workflow
+            dir: ui
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts || npm install --ignore-scripts
+          else
+            npm install --ignore-scripts
+          fi
+
+      - name: Test with coverage
+        run: |
+          # Only this package's own test/ folder — `ls`, not `git ls-files`
+          # over the whole repo, which would also find the other package's.
+          FILES=$(ls test/*.test.js test/*.test.mjs test/*.test.cjs 2>/dev/null || true)
+          if [ -z "$FILES" ]; then
+            echo "::warning::No test files in ${{ matrix.dir }}/test — nothing verified."
+            exit 0
+          fi
+          echo "running: $FILES"
+          # A suite that needs a node flag declares it on its own first lines
+          # (// @flags: --preserve-symlinks). One process runs them all, so union them.
+          FLAGS=$(for f in $FILES; do sed -n '1,5p' "$f" | sed -n 's|.*@flags:[[:space:]]*||p'; done | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          node --test $FLAGS --experimental-test-coverage \
+               --test-reporter=lcov --test-reporter-destination=coverage.info \
+               --test-reporter=spec --test-reporter-destination=stdout \
+               $FILES
+
+      - name: Upload coverage to Codecov
+        if: hashFiles(format('{0}/coverage.info', matrix.dir)) != ''
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ matrix.dir }}/coverage.info
+          flags: ${{ matrix.package }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

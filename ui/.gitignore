@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage.info
+.DS_Store
+*.log
+*.local
+
+# Settings files are never committed.
+.env
+.env.*
+*.env
+!*.env.example

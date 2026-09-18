@@ -1,0 +1,137 @@
+/* EVERY wf-* rule the designs use lives HERE, not in ../index.css.
+
+   This file is imported by the design components themselves, so it travels
+   with the library into whatever host embeds registerWorkflowUI(). ../index.css
+   is loaded by main.jsx ONLY — the standalone entry — so anything parked there
+   is invisible to an embedding host, and the pages render as unstyled text.
+   That is not a cosmetic difference: the same page must look the same whether
+   it is reached from this app or from a host like xeplr-bi, so the styles have
+   to sit on the library side of that line. ../index.css @imports this file, so
+   the standalone app's own pages (Actions, Jobs, Dashboards) still get them.
+
+   Only the APP SHELL — tokens, body, .app, .main and its .wf-builder
+   full-width exception — is left in ../index.css, because that is the host's
+   layout to own rather than something a mounted page should reach out and
+   restyle. */
+
+/* ── lists ─────────────────────────────────────────────────────────── */
+.wf-list { display: grid; gap: 10px; margin-top: 20px; }
+.wf-card {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; background: var(--surface);
+  border: 1px solid var(--hair); border-radius: 10px;
+  text-decoration: none; color: inherit;
+}
+.wf-card:hover { border-color: var(--xeplr-border-strong); }
+.wf-card-main { flex: 1; min-width: 0; }
+.wf-card-name { font-weight: 600; }
+.wf-card-desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.wf-card-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.wf-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.wf-actions { display: flex; gap: 8px; align-items: center; }
+.wf-empty { margin-top: 32px; padding: 32px; text-align: center; border: 1px dashed var(--hair); border-radius: 12px; }
+
+/* ── status ────────────────────────────────────────────────────────────
+   An outcome reads at a glance or it may as well be a log file. Colour AND
+   word, never colour alone — a pill that is only green is unreadable to
+   somebody who cannot tell it from the red one. */
+.wf-status {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; text-transform: capitalize;
+}
+.wf-status-good { background: var(--xeplr-status-good-soft); color: var(--xeplr-status-good); }
+.wf-status-bad { background: var(--xeplr-status-critical-soft); color: var(--xeplr-status-critical); }
+.wf-status-busy { background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn); }
+.wf-status-idle { background: var(--xeplr-tag-bg); color: var(--xeplr-tag-text); }
+.wf-status-current { background: var(--xeplr-accent-soft); color: var(--accent); }
+
+/* ── forms ─────────────────────────────────────────────────────────── */
+.wf-panel { padding: 18px; background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; }
+.wf-field { display: grid; gap: 6px; margin-bottom: 14px; }
+.wf-field label { font-size: 13px; color: var(--muted); }
+.wf-field input,
+.wf-field select,
+.wf-field textarea {
+  width: 100%; padding: 9px 11px; font-size: 14px; font-family: inherit;
+  background: var(--xeplr-input-bg); color: var(--xeplr-input-text);
+  border: 1px solid var(--xeplr-input-border); border-radius: 8px;
+}
+.wf-field textarea { min-height: 96px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.wf-field input:focus,
+.wf-field select:focus,
+.wf-field textarea:focus { outline: none; border-color: var(--accent); }
+.wf-field-help { font-size: 12px; color: var(--muted); }
+
+/* Anything the server hands back verbatim — an input, an output, an error.
+   Scrolls in its own box so the page body never scrolls sideways. */
+.wf-json {
+  margin: 8px 0 0; padding: 10px; overflow-x: auto;
+  background: var(--plane); border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+}
+
+/* ── the action catalog ────────────────────────────────────────────── */
+.wf-action { padding: 14px 16px; background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; }
+.wf-action-name { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.wf-action-desc { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+.wf-action-inputs { display: grid; gap: 4px; font-size: 13px; }
+.wf-action-input { display: flex; gap: 8px; }
+.wf-action-input code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.wf-action-input-type { color: var(--muted); font-size: 12px; }
+.wf-req { color: var(--xeplr-danger); }
+
+/* font: inherit spelled out on each control rather than left to a bare
+   `button {}` reset — a library must not restyle a host's every button, and
+   without it these pick up the browser's 13px system font instead of the
+   page's. */
+.wf-primary {
+  padding: 9px 16px; font: inherit; font-weight: 600;
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px; cursor: pointer;
+}
+.wf-primary:disabled { opacity: .55; cursor: default; }
+
+/* The list/editor's own muted copy. `.muted` alone is the HOST's class and is
+   not guaranteed to exist in one — see the file header. */
+.wf-muted { color: var(--muted); }
+
+.wf-field-row { display: flex; gap: 14px; }
+.wf-field-row .wf-field { flex: 1; }
+
+.wf-secondary {
+  padding: 8px 14px; font: inherit; font-weight: 600; font-size: 13px;
+  background: var(--xeplr-bg-secondary, transparent); color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 8px; cursor: pointer;
+}
+.wf-secondary:hover { border-color: var(--xeplr-border-strong); }
+
+.wf-link-danger {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--xeplr-danger); font-size: 13px;
+}
+.wf-link-danger:hover { text-decoration: underline; }
+
+/* The name/description inputs sitting in the page header read as text, not
+   form fields, until focused. */
+.wf-title-input {
+  font-size: 20px; font-weight: 600; border: 0; padding: 2px 0;
+  background: transparent; color: var(--ink); width: 100%;
+}
+.wf-title-input:focus { outline: none; border-bottom: 1px solid var(--accent); }
+.wf-desc-input {
+  font-size: 13px; color: var(--muted); border: 0; padding: 2px 0;
+  background: transparent; width: 100%;
+}
+.wf-desc-input:focus { outline: none; border-bottom: 1px solid var(--hair); }
+
+.wf-run-result { margin-top: 12px; }
+
+/* Which canvas a workflow opens. Only rendered for 'jobs' — the ordinary kind
+   is the default and labelling it would put a tag on every row to distinguish
+   the few that are different. */
+.wf-kind-tag {
+  margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; letter-spacing: .02em;
+  background: var(--xeplr-accent-soft); color: var(--accent); vertical-align: middle;
+}
+

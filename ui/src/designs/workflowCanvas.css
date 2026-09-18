@@ -1,0 +1,526 @@
+/* The visual builder — free-form canvas + connectors + a right-side
+   properties drawer. Reuses wf-panel/wf-field/wf-primary/wf-status etc from
+   ../index.css; only what's specific to the canvas layout lives here. */
+
+.wf-builder-bar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 16px;
+}
+.wf-builder-titles { flex: 1; min-width: 0; }
+
+.wf-canvas-shell {
+  position: relative; overflow: auto; border: 1px solid var(--hair);
+  border-radius: 12px; background:
+    radial-gradient(circle, var(--xeplr-border-secondary, #eceada) 1px, transparent 1px) 0 0/20px 20px,
+    var(--surface);
+  height: calc(100vh - 260px); min-height: 420px;
+}
+
+/* Connectors are drawn by @xeplr/ui-canvas (.xeplr-canvas-edge, dashed for
+   "each"); only the stub to an end pill is styled differently. Two classes so
+   it wins over the package's rule whichever stylesheet loads last. */
+.xeplr-canvas-edge.wf-connector-end { stroke: var(--xeplr-muted-2, #8a887f); }
+
+.wf-end-marker {
+  position: absolute; transform: translate(-50%, -50%);
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  border: 1px dashed var(--xeplr-border-strong, #cfcec4); background: var(--surface);
+  white-space: nowrap;
+}
+.wf-end-marker-success { color: var(--xeplr-status-good); border-color: var(--xeplr-status-good); }
+.wf-end-marker-failed { color: var(--xeplr-status-critical); border-color: var(--xeplr-status-critical); }
+
+/* Fills the canvas item that positions it (220×74, see NODE_W/NODE_H). */
+.wf-node {
+  width: 100%; height: 100%; box-sizing: border-box; border-radius: 10px;
+  background: var(--surface); border: 1.5px solid var(--hair);
+  box-shadow: 0 1px 3px rgba(26, 26, 25, .08);
+  cursor: grab; user-select: none;
+}
+.wf-node:active { cursor: grabbing; }
+.wf-node:hover { border-color: var(--xeplr-border-strong); }
+.wf-node-selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--xeplr-accent-soft); }
+.wf-node-wait { border-style: dashed; }
+.wf-node-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 12px; font-weight: 600; font-size: 13px;
+  border-bottom: 1px solid var(--hair);
+}
+.wf-node-badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 999px; background: var(--xeplr-tag-bg); color: var(--xeplr-tag-text);
+}
+.wf-node-badge-wait { background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn); }
+.wf-node-body { padding: 9px 12px; font-size: 12px; color: var(--muted); }
+.wf-node-action { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+.wf-node-empty-action { font-style: italic; }
+
+.wf-canvas-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 14px;
+}
+
+/* ── the drawer ────────────────────────────────────────────────────────── */
+.wf-drawer-backdrop { position: fixed; inset: 0; background: transparent; z-index: 20; }
+.wf-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92vw;
+  background: var(--surface); border-left: 1px solid var(--hair);
+  box-shadow: var(--xeplr-shadow-lg); z-index: 21;
+  display: flex; flex-direction: column;
+}
+.wf-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--hair);
+}
+.wf-drawer-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.wf-drawer-foot {
+  display: flex; gap: 10px; justify-content: space-between;
+  padding: 14px 20px; border-top: 1px solid var(--hair);
+}
+.wf-drawer-foot-actions { display: flex; gap: 10px; }
+.wf-close-btn {
+  background: none; border: 0; cursor: pointer; font-size: 20px; line-height: 1;
+  color: var(--muted); padding: 4px;
+}
+.wf-close-btn:hover { color: var(--ink); }
+
+/* ── the step drawer's structured editors ──────────────────────────────
+   These replace the two raw-JSON textareas the drawer used to be. Hand-
+   writing an expression-handler condition object is not something a builder
+   should ask of anyone, and a `values` blob gives no clue what the chosen
+   action actually takes. */
+
+/* Every block in the drawer collapses, not just the parameter groups. Five
+   concerns rendered at once is a scroll, and tightening the parameter rows did
+   nothing for the three sections below them. The header carries a count (or a
+   hint when shut) so a closed section is safe to leave closed — a header that
+   says nothing about what is behind it is one you open just to rule out. */
+.wf-sec { border-top: 1px solid var(--hair); }
+.wf-sec:first-child { border-top: 0; }
+
+.wf-sec-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 11px 2px; border: 0; background: none; cursor: pointer; text-align: left;
+}
+.wf-sec-head:hover .wf-sec-title { color: var(--accent); }
+.wf-sec-caret { font-size: 9px; color: var(--muted); flex-shrink: 0; }
+.wf-sec-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); font-weight: 600;
+}
+/* Shown only while SHUT — once the section is open its contents say this
+   better than a summary can. */
+.wf-sec-hint {
+  flex: 1; min-width: 0; font-size: 11px; color: var(--muted); opacity: .7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wf-sec-count {
+  margin-left: auto; flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+  color: var(--muted); background: var(--plane);
+  border: 1px solid var(--hair); border-radius: 9px; padding: 0 6px;
+}
+.wf-sec-body { padding-bottom: 14px; }
+
+/* A heading INSIDE a section — "Step inputs" under Step, "Action parameters"
+   under Action. Quieter than a section header on purpose: the hierarchy is
+   section → grid, and a sub-heading that competes with the header above it
+   flattens the very distinction it is there to draw. */
+.wf-sub-title {
+  font-size: 11px; color: var(--muted); font-weight: 600;
+  margin: 16px 0 4px;
+}
+
+/* Kept for any heading outside the collapsible sections. */
+.wf-section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); font-weight: 600;
+  margin: 22px 0 6px; padding-top: 14px; border-top: 1px solid var(--hair);
+}
+
+/* A wait step behaves differently enough to say so once, at the top, rather
+   than leaving it implied by the Kind dropdown. */
+.wf-wait-note {
+  font-size: 12px; line-height: 1.5; margin: 12px 0 0;
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--xeplr-status-warn-soft); color: var(--xeplr-status-warn);
+}
+.wf-wait-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+}
+
+/* ── parameters ─────────────────────────────────────────────────────────
+   A RULED GRID, not a stack of labelled boxes and not boxes inside a table.
+   email-send declares thirteen inputs and db-move sixteen; as labelled boxes
+   each one cost three lines before anything was typed. Here the cell border IS
+   the field boundary — controls are transparent and borderless — so a row is
+   one ruled line you type into rather than a bordered input floating inside a
+   bordered row. A row is ~28px instead of ~72px.
+
+   ONE grid for the whole block, group headers spanning it, so the column line
+   runs unbroken top to bottom. Borders are drawn as `border-top` on every cell
+   with the container clipping the outer edge, which is what keeps the rules
+   single-width instead of doubling where cells meet. */
+.wf-params {
+  display: grid;
+  grid-template-columns: minmax(104px, 40%) minmax(0, 1fr);
+  margin-top: 10px;
+  border: 1px solid var(--hair); border-radius: 8px; overflow: hidden;
+  background: var(--surface);
+}
+
+.wf-cell {
+  min-width: 0; border-top: 1px solid var(--hair);
+  font-size: 12px; line-height: 1.4;
+}
+/* The first two cells are the header, which owns the top edge already. */
+.wf-cell-head {
+  border-top: 0; padding: 5px 9px;
+  background: var(--plane); color: var(--muted);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+
+.wf-cell-key {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 3px 5px;
+  padding: 6px 9px; background: var(--plane);
+  border-right: 1px solid var(--hair);
+}
+/* WRAPS rather than ellipsises. The drawer is 420px and the key column 40% of
+   it, which is not enough for `useCustomConnection` — and a truncated
+   identifier is a field you cannot name, whereas a two-line one is just a
+   two-line one. */
+.wf-cell-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; color: var(--ink); overflow-wrap: anywhere;
+}
+.wf-cell-type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px; color: var(--muted); opacity: .8; flex-shrink: 0;
+}
+.wf-cell-key.is-bad, .wf-cell-val.is-bad { background: var(--xeplr-status-critical-soft, #fdf2f2); }
+
+.wf-cell-val { position: relative; display: flex; align-items: stretch; }
+
+/* Borderless and transparent — the CELL is the input. A border here would be a
+   box inside a box, which is exactly what made the stacked version feel heavy.
+   Focus is shown by tinting the whole cell rather than outlining the control,
+   so the ruled grid never breaks. */
+.wf-cell-input {
+  flex: 1; min-width: 0; margin: 0;
+  border: 0; background: transparent; color: var(--xeplr-input-text);
+  padding: 6px 9px; font-size: 12px; font-family: inherit;
+}
+.wf-cell-input:focus { outline: none; background: var(--xeplr-accent-soft); }
+.wf-cell-input::placeholder { color: var(--muted); opacity: .55; }
+.wf-cell-json {
+  resize: vertical; min-height: 0; line-height: 1.45;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+}
+.wf-cell-check {
+  width: 14px; height: 14px; margin: 7px 9px; cursor: pointer; flex-shrink: 0;
+}
+
+/* Help and errors are their own full-width ruled row under the one they belong
+   to — in the value cell they would shove every control down a line the moment
+   one opened. */
+.wf-cell-note {
+  grid-column: 1 / -1; padding: 6px 9px;
+  background: var(--plane); color: var(--muted); font-size: 11.5px; line-height: 1.5;
+}
+.wf-cell-note.is-bad {
+  background: var(--xeplr-status-critical-soft, #fdf2f2); color: var(--xeplr-status-critical);
+}
+
+/* Descriptions are worth having and worth hiding. Printed under all thirteen
+   inputs at once they are wallpaper, and wallpaper is what people learn to
+   skip; behind a button they get read. Pushed to the cell's right edge so the
+   names stay a clean column to scan down. */
+.wf-help-btn {
+  flex-shrink: 0; margin-left: auto; width: 14px; height: 14px; padding: 0;
+  border: 1px solid var(--hair); border-radius: 50%;
+  background: var(--surface); color: var(--muted);
+  font-family: Georgia, 'Times New Roman', serif; font-style: italic;
+  font-size: 9.5px; line-height: 1; cursor: pointer;
+}
+.wf-help-btn:hover, .wf-help-btn.is-on { border-color: var(--accent); color: var(--accent); }
+
+/* The reference inserter sits flush against the cell's right edge, separated
+   by a rule rather than a gap — still part of the grid, not floating in it. */
+.wf-cell-val .wf-ref-btn {
+  border: 0; border-left: 1px solid var(--hair); border-radius: 0;
+  padding: 0 7px; background: var(--plane); flex-shrink: 0;
+}
+.wf-cell-val .wf-ref-btn:hover { background: var(--xeplr-accent-soft); color: var(--accent); }
+
+/* ── parameter groups ───────────────────────────────────────────────────
+   The tail of always-legitimate options — cc, reply-to, batch size. Real
+   inputs, none of them what you opened the drawer for. A ruled row spanning
+   both columns, with the member count on it: a shut section with no number is
+   a section nobody opens. */
+.wf-cell-group {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 6px 9px; background: var(--plane); color: var(--muted);
+  font-size: 11.5px; cursor: pointer; text-align: left;
+  border-left: 0; border-right: 0; border-bottom: 0;
+}
+.wf-cell-group:hover { color: var(--accent); background: var(--xeplr-accent-soft); }
+.wf-cell-group.is-open { background: var(--surface); color: var(--ink); }
+.wf-cell-caret { font-size: 9px; flex-shrink: 0; }
+.wf-cell-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-cell-count {
+  flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 9px; padding: 0 6px;
+}
+
+/* The reference inserter. Deliberately reads as "{ }" — it inserts a binding
+   token, and the braces ARE the syntax. */
+.wf-ref-btn {
+  border: 1px solid var(--hair); background: var(--surface); color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+  border-radius: 5px; padding: 2px 6px; cursor: pointer; flex-shrink: 0;
+}
+.wf-ref-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.wf-ref-menu {
+  position: absolute; right: 0; z-index: 30; width: 280px;
+  max-height: 300px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--hair); border-radius: 10px;
+  box-shadow: var(--xeplr-shadow-lg); padding: 6px;
+}
+.wf-ref-heading {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); padding: 7px 8px 3px;
+}
+.wf-ref-empty { font-size: 12px; color: var(--muted); padding: 10px; margin: 0; line-height: 1.5; }
+.wf-ref-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; border: 0; background: none; border-radius: 6px;
+  padding: 6px 8px; cursor: pointer; text-align: left;
+}
+.wf-ref-item:hover { background: var(--plane); }
+.wf-ref-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px; font-weight: 600; flex-shrink: 0;
+}
+/* The sample VALUE beside the name — this is what lets you tell `id` from
+   `userId` without opening another step. */
+.wf-ref-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── transitions ────────────────────────────────────────────────────── */
+.wf-trans-row {
+  border: 1px solid var(--hair); border-radius: 9px;
+  padding: 10px; margin-bottom: 10px; background: var(--plane);
+}
+.wf-trans-condwrap { position: relative; display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.wf-trans-cond {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--hair); border-radius: 6px; background: var(--surface);
+  color: var(--ink); padding: 6px 8px; font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.wf-trans-meta { display: flex; gap: 6px; align-items: center; }
+.wf-trans-meta select {
+  border: 1px solid var(--hair); border-radius: 6px; background: var(--surface);
+  color: var(--ink); padding: 5px 6px; font-size: 12px;
+}
+.wf-trans-meta select:first-child { flex-shrink: 0; width: 100px; }
+.wf-trans-meta select:last-of-type { flex: 1; min-width: 0; }
+.wf-trans-remove {
+  border: 0; background: none; color: var(--muted);
+  width: 24px; height: 24px; border-radius: 5px; cursor: pointer;
+  font-size: 15px; line-height: 1; flex-shrink: 0;
+}
+.wf-trans-remove:hover { background: var(--surface); color: var(--xeplr-danger); }
+.wf-trans-add {
+  width: 100%; border: 1px dashed var(--hair); background: none; color: var(--muted);
+  border-radius: 8px; padding: 8px; font-size: 12px; cursor: pointer;
+}
+.wf-trans-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── sample output ──────────────────────────────────────────────────── */
+.wf-sample-json {
+  width: 100%; border: 1px solid var(--hair); border-radius: 8px;
+  background: var(--plane); color: var(--ink); padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  resize: vertical;
+}
+
+/* ── sample output: the two ways to fill it ────────────────────────────
+   "Use last run" reads history. "Run now" executes. They sit side by side
+   because they answer the same question, but only one of them can send an
+   email — which is what the confirm below exists to make unmissable. */
+.wf-sample-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.wf-sample-actions button { flex: 1; }
+.wf-sample-actions button:disabled { opacity: .5; cursor: default; }
+
+.wf-sample-note {
+  font-size: 12px; line-height: 1.5; margin-bottom: 8px;
+  padding: 7px 10px; border-radius: 7px;
+}
+.wf-sample-note.is-ok { background: var(--xeplr-status-good-soft); color: var(--xeplr-status-good); }
+.wf-sample-note.is-error { background: var(--xeplr-status-critical-soft); color: var(--xeplr-status-critical); }
+.wf-sample-note.is-muted { background: var(--plane); color: var(--muted); }
+.wf-sample-note .wf-json { margin-top: 6px; }
+
+/* Inline rather than a window.confirm(): the action's NAME has to be on
+   screen, and a native dialog cannot show it in a way that survives
+   translation or styling. Bordered in the danger colour because the whole
+   point is that this one is not reversible. */
+.wf-confirm {
+  border: 1px solid var(--xeplr-danger); border-radius: 9px;
+  background: var(--xeplr-status-critical-soft);
+  padding: 12px; margin-bottom: 10px;
+}
+.wf-confirm-title { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--xeplr-status-critical); }
+.wf-confirm-title code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.wf-confirm-body { margin: 0 0 10px; font-size: 12px; line-height: 1.5; color: var(--ink); }
+.wf-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* A yes/no question reads as a checkbox, not a true/false dropdown. Ticking it
+   reveals the fields it governs (see showWhen), so the two read as one
+   decision. The parameter grid draws its own — see .wf-cell-check; this
+   pair is for checkboxes outside it. */
+.wf-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.wf-check input[type="checkbox"] { width: 15px; height: 15px; margin: 0; cursor: pointer; flex-shrink: 0; }
+
+
+/* ── the workflow's own declared inputs ──────────────────────────────────
+   A different grid from the one above it, doing a different job: Parameters
+   FILLS IN an action's schema, this one EDITS a schema — the workflow's, the
+   thing a caller must satisfy before the engine will start a run at all.
+
+   Same ruled construction so the two read as siblings, but four narrow columns
+   rather than two: what it is called, what type it is, whether it is required,
+   and a + for the rest. Default, sample and description are real but rarely
+   touched, so they are a full-width row behind that +, exactly like the group
+   tail in the action grid. */
+.wf-decl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 34px 30px;
+  border: 1px solid var(--hair); border-radius: 8px; overflow: hidden;
+  background: var(--surface); margin-top: 8px;
+}
+.wf-decl-head {
+  padding: 5px 9px; background: var(--plane); color: var(--muted);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+.wf-decl-cell { border-top: 1px solid var(--hair); display: flex; align-items: center; min-width: 0; }
+.wf-decl-cell.is-bad { background: var(--xeplr-status-critical-soft, #fdf2f2); }
+.wf-decl-mid { justify-content: center; text-align: center; }
+.wf-decl-span { grid-column: 1 / -1; }
+
+/* The name IS the binding token, so it is monospace — `{params.customerId}`
+   is what you will type upstairs, and seeing it in the same face is what makes
+   a typo visible before it becomes a token that cannot resolve. */
+.wf-decl-cell input:not([type="checkbox"]) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+}
+.wf-decl-cell select { font-size: 11.5px; padding-right: 2px; }
+.wf-decl-cell .wf-cell-check { margin: 0; }
+
+.wf-decl-more {
+  border-top: 1px solid var(--hair); background: var(--plane);
+  padding: 9px; display: grid; gap: 7px;
+}
+.wf-decl-more label { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; }
+.wf-decl-more label span { font-size: 11px; color: var(--muted); }
+.wf-decl-more input {
+  border: 1px solid var(--xeplr-input-border); border-radius: 6px;
+  background: var(--xeplr-input-bg); color: var(--xeplr-input-text);
+  padding: 5px 8px; font-size: 11.5px; width: 100%;
+}
+.wf-decl-more input:focus { outline: none; border-color: var(--accent); }
+.wf-decl-remove { justify-self: start; font-size: 11.5px; padding: 2px 0; }
+
+.wf-decl-add {
+  border: 0; border-top: 1px solid var(--hair); background: var(--plane);
+  color: var(--muted); font-size: 11.5px; padding: 7px 9px;
+  cursor: pointer; text-align: left; width: 100%;
+}
+.wf-decl-add:hover { color: var(--accent); background: var(--xeplr-accent-soft); }
+
+
+/* ── the cell lens ───────────────────────────────────────────────────────
+   One value, popped out and made writable. The grid buys its density by
+   giving every value one short line, which is right for {params.email} and
+   hopeless for an html body — you end up composing a paragraph through a
+   letterbox. Double-click opens it here.
+
+   Positioned in JS, growing out of the cell it came from (see CellLens), so
+   left/top are set at runtime and only the offscreen defaults live here.
+   `fixed` rather than absolute because the drawer body scrolls and clips. */
+.wf-lens {
+  position: fixed; left: -9999px; top: -9999px; z-index: 40;
+  width: 460px; max-width: calc(100vw - 16px);
+  background: var(--surface); border: 1px solid var(--hair); border-radius: 12px;
+  box-shadow: var(--xeplr-shadow-lg); padding: 12px;
+  display: grid; gap: 9px;
+}
+
+.wf-lens-head { display: flex; align-items: center; gap: 6px; }
+.wf-lens-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.wf-lens-close { margin-left: auto; }
+/* Shown outright here, not behind the ⓘ — the whole reason to be in the lens
+   is that there is room, and the description is what tells you a bare string
+   is accepted for `to`. */
+.wf-lens-help { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
+.wf-lens-area {
+  width: 100%; resize: vertical; padding: 9px 11px; font-size: 13px;
+  font-family: inherit; line-height: 1.55;
+  background: var(--xeplr-input-bg); color: var(--xeplr-input-text);
+  border: 1px solid var(--xeplr-input-border); border-radius: 8px;
+}
+.wf-lens-area:focus { outline: none; border-color: var(--accent); }
+.wf-lens-area.is-json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+}
+
+/* References laid out FLAT, not behind the { } button. There is room, and the
+   point of the picker is that binding should be a click — making it a click
+   inside a menu inside a popup is not that. */
+.wf-lens-refs {
+  border-top: 1px solid var(--hair); padding-top: 8px;
+  max-height: 190px; overflow-y: auto;
+}
+.wf-lens-refs-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); font-weight: 600; margin-bottom: 4px;
+}
+.wf-lens-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 0 6px; }
+.wf-lens-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px;
+  border: 1px solid var(--hair); border-radius: 6px; background: var(--plane);
+  color: var(--ink); padding: 3px 7px; cursor: pointer;
+}
+.wf-lens-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--xeplr-accent-soft); }
+
+/* A quiet affordance — the row is already dense, so this is a hint on hover
+   rather than a permanent icon on every value. */
+.wf-cell-val.is-zoomable:hover { background: var(--plane); }
+
+/* ── the palette picker (jobs canvas) ─────────────────────────────────── */
+/* Inline rather than stacked: it replaces a single "+ Add step" button and
+   should occupy the same line, so switching between the two canvases does not
+   move everything below it. */
+.wf-palette { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wf-palette-pick {
+  min-width: 240px; max-width: 380px; padding: 7px 10px;
+  border: 1px solid var(--hair); border-radius: 8px;
+  background: var(--surface); color: inherit; font-size: 13px;
+}
+/* The empty state sits BESIDE the disabled control rather than replacing it,
+   so the picker never vanishes — a control that disappears reads as a bug,
+   while a disabled one next to a sentence reads as an explanation. */
+.wf-palette-empty { font-size: 12px; }
+

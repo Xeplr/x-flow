@@ -1,0 +1,69 @@
+{
+  "name": "@xeplr/workflow",
+  "version": "1.0.0",
+  "description": "Workflows over @xeplr/actions — steps that bind inputs to earlier outputs, branch on conditions, fan out over lists and wait for a person or a job. registerWorkflow() mounts it into a host Express app, or it runs on its own.",
+  "main": "index.js",
+  "bin": {
+    "xeplr-workflow-server": "./bin/www"
+  },
+  "files": [
+    "index.js",
+    "env.required.js",
+    "lib/",
+    "models/",
+    "migrations/",
+    "migrations-auth/",
+    "orchestration/",
+    "db/",
+    "bin/"
+  ],
+  "scripts": {
+    "check-env": "dotenv -e development.env -- xeplr-check-env",
+    "db:create": "dotenv -e development.env -- xeplr-migrate create-db --connectionName api --connection-env WORKFLOW_CONNECTION",
+    "db:encrypt": "dotenv -e development.env -- xeplr-db-encrypt",
+    "start-api": "NODE_ENV=development node ./bin/www",
+    "migrate:up": "dotenv -e development.env -- xeplr-migrate up --dir ./migrations --connectionName api --connection-env WORKFLOW_CONNECTION",
+    "migrate:status": "dotenv -e development.env -- xeplr-migrate status --dir ./migrations --connectionName api --connection-env WORKFLOW_CONNECTION",
+    "test": "node test/run.mjs"
+  },
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "actions",
+    "engine",
+    "express",
+    "xeplr"
+  ],
+  "author": "xeplr",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xeplr/x-flow"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@xeplr/actions": "^1.1.0",
+    "@xeplr/auth": "^1.0.0",
+    "@xeplr/base-apis": "^2.0.2",
+    "@xeplr/db": "^1.0.0",
+    "@xeplr/email": "^1.0.0",
+    "@xeplr/expression-handler": "^1.0.0",
+    "@xeplr/schema-handler": "^1.0.0",
+    "@xeplr/utils": "^1.0.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^8.0.0"
+  },
+  "xeplr": {
+    "tagPrefix": "workflow-v",
+    "releasePaths": [
+      ".",
+      ":(exclude)ui"
+    ]
+  }
+}

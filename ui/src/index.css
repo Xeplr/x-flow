@@ -1,0 +1,93 @@
+/* The wf-* component styles live with the LIBRARY (designs/workflow.css), not
+   here, so they reach a host that embeds registerWorkflowUI() — this file is
+   loaded by main.jsx alone and a host never sees it. Imported back in because
+   this app's own pages (Actions, Jobs, Dashboards) use the same classes; the
+   designs import it directly, so it is one module either way, not a copy.
+   Must stay above every rule below — that is where CSS allows @import. */
+@import './designs/workflow.css';
+
+:root {
+  --plane: #f7f7f5;
+  --surface: #ffffff;
+  --ink: #1a1a19;
+  --muted: #6b6a63;
+  --hair: #e2e1d9;
+  --accent: #2563eb;
+
+  /* ── The --xeplr-* aliases ─────────────────────────────────────────
+     The shared @xeplr/ui-* stylesheets are written against this token set. An
+     app that doesn't define it doesn't fail — every reference falls through to
+     a hardcoded fallback baked into those files — and that is the trap: the
+     border fallback is a COOL grey while this palette's hairline is a warm one,
+     so every input, card and divider drawn by a shared component comes out a
+     slightly different grey from everything around it. Nothing looks broken; it
+     looks cheap, which is harder to spot and worse.
+
+     Defined here rather than swept through the call sites: one place to change,
+     and the fallbacks stay as a safety net if a stylesheet is ever used outside
+     an app that sets these. */
+  --xeplr-border: var(--hair);
+  --xeplr-border-strong: #cfcec4;
+  --xeplr-border-primary: var(--hair);
+  --xeplr-border-secondary: #eceada;
+  --xeplr-surface: var(--surface);
+  --xeplr-surface-2: var(--plane);
+  --xeplr-bg-primary: var(--surface);
+  --xeplr-bg-secondary: var(--plane);
+  --xeplr-bg-tertiary: var(--plane);
+  --xeplr-bg-subtle: var(--plane);
+  --xeplr-bg-overlay: rgba(26, 26, 25, .45);
+  --xeplr-hover: #f0efe9;
+  --xeplr-text: var(--ink);
+  --xeplr-text-primary: var(--ink);
+  --xeplr-text-secondary: var(--muted);
+  --xeplr-text-muted: var(--muted);
+  --xeplr-muted: var(--muted);
+  --xeplr-muted-2: #8a887f;
+  --xeplr-accent: var(--accent);
+  --xeplr-accent-soft: #e8eefc;
+  --xeplr-accent-text: #fff;
+  --xeplr-accent-muted: #93aef0;
+  --xeplr-danger: #c2372e;
+  --xeplr-status-critical: #c2372e;
+  --xeplr-status-critical-soft: #fdeceb;
+  --xeplr-status-good: #1d7a4c;
+  --xeplr-status-good-soft: #e7f4ed;
+  --xeplr-status-warn: #a86a00;
+  --xeplr-status-warn-soft: #fdf3e0;
+  --xeplr-input-bg: var(--surface);
+  --xeplr-input-border: var(--hair);
+  --xeplr-input-text: var(--ink);
+  --xeplr-tag-bg: #f0efe9;
+  --xeplr-tag-text: var(--muted);
+  --xeplr-shadow-lg: 0 10px 28px rgba(26, 26, 25, .14);
+
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--plane); color: var(--ink); }
+.app { min-height: 100vh; }
+h1 { font-size: 24px; margin: 0 0 8px; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+.muted { color: var(--muted); }
+
+/* Nav chrome comes from @xeplr/ui-account's NavPage — this is just the
+   middle-slot content we hand it. */
+.nav-company-indicator { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.nav-company-indicator a { color: var(--accent); text-decoration: none; font-size: 13px; }
+.nav-company-indicator a:hover { text-decoration: underline; }
+
+/* The drawer rail is a pure overlay (position: fixed — see @xeplr/ui-account's
+   nav.css) and never pushes this. But plain `margin: 0 auto` centres in the
+   FULL viewport, unaware the rail sits on top of the left edge — on a wide
+   screen that gap is bigger than the collapsed 60px rail, leaving dead space
+   between the two. max(60px, …) is a static floor that guarantees the gap is
+   never smaller than the rail while still centring normally past that. */
+.main { padding: 32px 24px; max-width: 1100px; margin: 0 auto; margin-left: max(60px, calc(50% - 550px)); }
+
+/* A working surface opts out of the centred column and goes full width — the
+   canvas builder needs it, see pages.jsx's WorkflowEditorPage. */
+.main:has(.wf-builder) { max-width: none; margin-left: 60px; margin-right: 24px; }
+

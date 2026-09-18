@@ -1,0 +1,14 @@
+node_modules/
+logs/
+uploads/
+coverage.info
+.DS_Store
+*.log
+*.local
+
+# Settings files hold keys, secrets and database logins — never committed.
+# (This package's history started fresh because an earlier one committed them.)
+.env
+.env.*
+*.env
+!*.env.example
