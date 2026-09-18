@@ -1,6 +1,6 @@
 {
   "name": "@xeplr/ui-workflow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The screens for @xeplr/workflow — the workflow list, the step builder canvas and the step drawer — as routes a host app registers, or a standalone app",
   "type": "module",
   "main": "./src/index.js",
