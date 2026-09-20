@@ -34,12 +34,25 @@ console.log('\na broken condition is caught at BUILD time, with a reason')
 }
 
 console.log('\ntext survives a round trip')
-;['output.approved = true', 'output.amount >= 5000', 'output.status = "reject"'].forEach((src) => {
+;['output.approved = true', 'output.amount >= 5000', 'output.status = "reject"',
+  // Written by the engine now, so these no longer fall back to raw JSON.
+  'upper(output.name) = "ADA"', 'contains(output.note, "urgent")',
+  'output.country = "IN" and output.score >= 750',
+  'output.tier = "gold" or output.spend > 10000',
+  'between(output.score, 600, 750)', 'output.status in ("paid", "refunded")',
+  'output.[order month] = "Aug"'].forEach((src) => {
   const node = compileCondition(src).node
   const back = conditionToText(node)
   const again = compileCondition(back)
   check(`${src} -> ${back}`, again.ok && JSON.stringify(again.node) === JSON.stringify(node))
 })
+
+{
+  // A condition stored by an older build, in the 1.x shape.
+  const legacy = { left: { field: 'output.amount' }, op: 'gte', right: { value: 5000 } }
+  check('a 1.x condition reads back as text', conditionToText(legacy) === 'output.amount >= 5000')
+  check('...and an unreadable node stays JSON', conditionToText({ nonsense: true }) === '{"nonsense":true}')
+}
 
 console.log('\nreference paths')
 {

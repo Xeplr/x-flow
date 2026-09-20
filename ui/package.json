@@ -36,7 +36,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@xeplr/expression-handler": "^1.0.2"
+    "@xeplr/expression-handler": "^2.0.0"
   },
   "peerDependencies": {
     "@xeplr/ui-account": "^1.0.0",

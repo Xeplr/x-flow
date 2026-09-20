@@ -31,7 +31,7 @@ export function compileCondition(text) {
   var trimmed = (text || '').trim()
   if (!trimmed) return { ok: true, node: null }
   try {
-    return { ok: true, node: xf.formula.parse(trimmed) }
+    return { ok: true, node: xf.parse(trimmed) }
   } catch (err) {
     return { ok: false, error: err.message || String(err) }
   }
@@ -39,44 +39,35 @@ export function compileCondition(text) {
 
 // ── node → text ─────────────────────────────────────────────────────────
 
-function operandToText(operand) {
-  if (!operand || typeof operand !== 'object') return ''
-  if ('field' in operand) {
-    return operand.fn ? `${operand.fn}(${operand.field})` : operand.field
-  }
-  if ('value' in operand) {
-    var v = operand.value
-    if (typeof v === 'string') return JSON.stringify(v)
-    if (Array.isArray(v)) return '[' + v.map(function (x) { return typeof x === 'string' ? JSON.stringify(x) : String(x) }).join(', ') + ']'
-    return String(v)
-  }
-  return ''
-}
-
-// The formula spellings of the operators, so a round-trip through
-// decompile → compile lands on the same node rather than on a parse error.
-var OP_TEXT = {
-  eq: '=', equals: '=',
-  neq: '!=', notEquals: '!=',
-  gt: '>', gte: '>=', lt: '<', lte: '<='
-}
-
 /**
  * Render a stored condition node back as editable formula text.
  *
- * Anything without an infix spelling (contains, in, between, isNull, …) has no
- * lossless one-liner, so it is handed back as JSON rather than mangled into a
- * form that would not compile. Those are rare in transitions and the textarea
- * still round-trips them safely.
+ * The ENGINE writes it, for the same reason the engine reads it: an editor
+ * that spelled conditions its own way would drift from what compiles. This
+ * used to be a local table of six infix operators, so anything else — a
+ * function, contains, between — was handed back as raw JSON for someone to
+ * edit by hand.
+ *
+ * A node the engine can't write (hand-edited into something invalid) still
+ * comes back as JSON rather than as text that would not compile.
+ *
+ * A condition stored in the older shape ({ left, op: 'gte', right }) reads
+ * back as `a >= b`, and SAVING it writes the current shape. That is a
+ * normalisation, not a no-op: the old `gte` compared as numbers, while `>=`
+ * orders dates too and is false against nothing.
  */
 export function conditionToText(node) {
   if (!node) return ''
-  var sym = OP_TEXT[node.op]
-  if (!sym || !node.left) return JSON.stringify(node)
-  var left = operandToText(node.left)
-  var right = operandToText(node.right)
-  if (!left || (node.right && !right)) return JSON.stringify(node)
-  return `${left} ${sym} ${right}`
+  try {
+    var text = xf.toText(node)
+    // Only hand back text that READS BACK — never something that would fail
+    // the moment the editor saved it.
+    if (!text) return JSON.stringify(node)
+    xf.parse(text)
+    return text
+  } catch (err) {
+    return JSON.stringify(node)
+  }
 }
 
 // ── field references ────────────────────────────────────────────────────

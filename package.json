@@ -50,7 +50,7 @@
     "@xeplr/base-apis": "^2.0.2",
     "@xeplr/db": "^1.0.0",
     "@xeplr/email": "^1.0.0",
-    "@xeplr/expression-handler": "^1.0.0",
+    "@xeplr/expression-handler": "^2.0.0",
     "@xeplr/schema-handler": "^1.0.0",
     "@xeplr/utils": "^1.0.0",
     "dotenv": "^17.4.2",

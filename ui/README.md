@@ -108,6 +108,7 @@ ui/
 │  ├─ validateDesign.js             required elements a custom Design must render
 │  ├─ stepSources.js                palette sources: action → step, job → job-run step
 │  ├─ conditions.js                 transition formula ⇄ @xeplr/expression-handler node
+│                                  (both directions are the engine's: parse / toText)
 │  ├─ paramGroups.js                step form layout (showWhen, group), run-param declarations
 │  ├─ api/                          base.js, workflows.js, actions.js, jobs.js, companies.js, workspaces.js
 │  ├─ designs/                      WorkflowListSample, WorkflowCanvasSample (default editor),
@@ -191,6 +192,7 @@ headers).
 | A job step is `job-run`, `kind: 'wait'`, `onError: 'stop'`, with `jobsUrl: '{env.JOBS_API_URL}'` and `callbackUrl: '{resumeUrl}'` left as template strings | Both are resolved by the engine at run time; a browser-filled hostname works in one deployment only. A failed job must stop the chain |
 | Blank name on a jobs canvas is auto-derived from steps (`A → B → C`); a typed name is never replaced | The steps already describe the connection |
 | Transition conditions are compiled with `@xeplr/expression-handler`, the engine's own evaluator | One definition of what a condition means; a second parser would drift and fail at run time |
+| A stored condition is written back to text by the engine (`xf.toText`), not by a local table of operators | The local table knew six infix operators, so a condition using a function, `contains` or `between` was handed back as raw JSON to edit by hand. A condition stored in the pre-2.0 shape now reads back as text, and saving it normalises it to the current language |
 | `showWhen` and `group` are layout only | The server validates every declared field regardless of which sections were open |
 | "Try step" confirms inline, naming the action | It runs the action for real and is not reversible |
 | `stepSources.js`, `conditions.js`, `paramGroups.js` import no React or `api/*` | Keeps them loadable by plain `node` tests |
