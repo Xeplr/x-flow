@@ -37,7 +37,16 @@ var xcfgSetup = require('./db/xcfgSetup');
  *   behind it and is never reached: the mount succeeds, and every path under
  *   it answers 404. A host built that way has to hand the router in with its
  *   own route map rather than bolt it on after.
- * @param {object} config.db - { name, connection, mts? } — see lib/db.js.
+ * @param {object} config.db - { name, connection, mts?, connectionName?, migrationsTable? } —
+ *   see lib/db.js. migrationsTable: workflow's own migration ledger, for a
+ *   database it SHARES with its host (default: @xeplr/db's xeplr_migrations).
+ * @param {boolean} [config.tenantTables=true] - false: do not create
+ *   standalone workflow's own companies / workspaces tables — a host with its
+ *   own tenants (or none) passes this.
+ * @param {boolean} [config.access=false] - true: every flows route answers only
+ *   a caller whose permissions (req.access.apis) name it — "List flows",
+ *   "Start flow run"… from migrations-auth/0004_flows_access.sql. Fails
+ *   closed when no auth gate put req.access on the request.
  *   Always required: workflow's own domain data is always its own
  *   responsibility, however it's mounted.
  * @param {string} [config.applicationId] - the PRODUCT mounting this
@@ -135,12 +144,38 @@ async function registerWorkflow(config) {
   // .migrations lets an embedding host pass them directly instead, since a
   // host that already has the paths in code should not have to route them
   // back out through the environment.
+  //
+  // SHARING A DATABASE. A host may give workflow its OWN database (BI's
+  // xeplr_bi_workflow) or put it in the host's (an app from @xeplr/cli). In a
+  // shared one, config.db.migrationsTable keeps workflow's record of what ran
+  // apart from the host's — both use @xeplr/db's migrator, and one ledger
+  // would mix the two histories by filename.
+  var ledger = config.db.migrationsTable || undefined;
+
+  // companies / workspaces are STANDALONE workflow's own tenant lists — the
+  // lists behind its "pick a company, then a workspace" screens. Nothing in a
+  // workflow, step or run references them (runs carry mtId1/mtId2 as plain
+  // ids), and an embedded host has its own tenants, or none — so a host says
+  // tenantTables: false and they are not created. That is also what lets
+  // workflow share a database that already has a "companies" table.
+  if (config.tenantTables !== false) {
+    var tenants = await up({
+      db: config.db.name,
+      dir: path.join(__dirname, 'migrations-tenants'),
+      type: 'precede',
+      connectionName: migrationConnection,
+      tableName: ledger
+    });
+    if (tenants.migrations.length) console.log('[workflow] ran ' + tenants.migrations.length + ' tenant-table migrations');
+  }
+
   var migrated = await up({
     db: config.db.name,
     dir: path.join(__dirname, 'migrations'),
     extDir: config.migrations || migrationsFor('workflow'),
     type: 'precede',
-    connectionName: migrationConnection
+    connectionName: migrationConnection,
+    tableName: ledger
   });
   if (migrated.migrations.length) {
     console.log('[workflow] ran ' + migrated.migrations.length + ' migrations');

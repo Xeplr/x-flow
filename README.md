@@ -7,7 +7,7 @@ It runs two ways: **embedded**, where a host calls `registerWorkflow()` and moun
 | what | how |
 |---|---|
 | A step is an action | Each step names an action registered in `@xeplr/actions`; its form comes from that action's own input schema (`GET /actions`), not a second description of it. Inputs bind to earlier steps' output, the run's parameters, or a setting on an allowlist. |
-| Branch, fan out, join | Conditions are compiled with the same `@xeplr/expression-handler` the engine runs. An *each* transition starts one child run per item, and a join step picks the parent back up once every child has finished. |
+| Branch, fan out, join | Conditions are compiled with the same `@xeplr/expression-handler` the engine runs — since 2.0 that means the full formula language, with `and` / `or` and functions, and the same engine BI computes report formulas with. An *each* transition starts one child run per item, and a join step picks the parent back up once every child has finished. |
 | Wait for a person or a job | A wait step parks the run and issues a single-use resume link — followed from an email or called back by a job — that cannot be claimed until the step is actually waiting. |
 | Screens as steps (flows) | An app's forms, one after another, with arrows that test one field — the `/flows` facade (`lib/flows.js`). |
 | Parameters checked first | A run's parameters are the union of what every step declares, validated before the run is recorded. |
@@ -84,6 +84,33 @@ package's migrations (plus `XEPLR_WORKFLOW_MIGRATIONS` or `config.migrations`),
 tries `xeplr_configs` (warns and continues on failure), registers the action
 catalog, and returns the router.
 
+### Embedded in the host's own database (how an `@xeplr/cli` app does it)
+
+Workflow does not need a database of its own. An app can keep everything in
+one:
+
+```js
+var { flowsRouter } = await registerWorkflow({
+  applicationId: 'myapp1',
+  db: { name: process.env.DB_API, connection: appConnection, migrationsTable: 'workflow_migrations' },
+  tenantTables: false,        // the app's tenants are the tenants — see below
+  access: true,               // each flows route checks the caller's permissions
+  mtMembershipGate: appMemberGate
+});
+routes['/api/flows'] = flowsRouter;
+```
+
+| option | why |
+|---|---|
+| `db.migrationsTable` | Workflow's own record of which migrations ran. Both it and the host use `@xeplr/db`'s migrator, and one shared ledger would mix the two histories by filename. |
+| `tenantTables: false` | `companies` and `workspaces` are **standalone** workflow's own tenant lists — the lists behind its "pick a company, then a workspace" screens (`migrations-tenants/`). Nothing in a workflow, step or run references them; runs carry `mtId1` / `mtId2` as plain ids. Embedded, the host's tenancy is used instead — its levels, its tables, its picker — or none at all. Leaving them out is also what lets workflow live in a database that already has a `companies` table. |
+| `access: true` | The flows routes answer only a caller whose permissions (`req.access.apis`) name them — `List flows`, `Start flow run`… (`migrations-auth/0004_flows_access.sql`), the same way `@xeplr/factory` checks its routes. Off by default, as before. |
+
+**Tenancy follows the host.** Embedded, workflow registers no tenancy levels of
+its own; its tables are filtered by whatever the host registered with
+`@xeplr/db`'s `registerMTs` — none, one level, or several. Only standalone mode
+declares company → workspace (`orchestration/standalone.js`).
+
 ### Environment
 
 Names and meaning only. Values live in `development.env` — copy
@@ -143,7 +170,8 @@ xeplr-workflow/
 ├─ db/xcfgSetup.js          shared @xeplr/actions attachConfig({ service: 'xeplr-workflow' })
 ├─ models/                  Company, Workspace, Workflow, WorkflowStep, WorkflowRun,
 │                           WorkflowStepRun, WorkflowResumeKey, WorkflowRunEdge
-├─ migrations/              0001–0012, this package's own database
+├─ migrations/              0003–0013, workflow's own tables
+├─ migrations-tenants/      0001–0002: standalone workflow's companies / workspaces (skipped with tenantTables: false)
 ├─ migrations-auth/         rows for the AUTH database (roles, menus, apis)
 └─ test/                    run.mjs + *.test.mjs
 ```
@@ -346,6 +374,7 @@ peers from this app's `node_modules`). No database or network needed; needs
 | `actionCatalog.test.mjs` | Ready vs placeholder detection; registered names are kebab-case; `spawnProgram` not offered |
 | `flows.test.mjs` | The `/flows` facade: flows as workflows, steps and arrows, runs and submits (against a fake database) |
 | `envExposed.test.mjs` | Nothing exposed by default; exact, case-sensitive matching; globs fail closed (against real `interpolateAll`) |
+| `flowsAccess.test.mjs` | With `access: true`, each flows route refuses a caller lacking its permission, and refuses outright with no `req.access`; off by default |
 | `runParams.test.mjs` | `resolveParams` / `collectParams`: required, defaults, types, typos, union rules |
 
 Not covered by tests: the router, `startRun`/`resumeByKey` against a database,

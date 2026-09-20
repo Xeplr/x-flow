@@ -12,6 +12,7 @@
     "lib/",
     "models/",
     "migrations/",
+    "migrations-tenants/",
     "migrations-auth/",
     "orchestration/",
     "db/",
