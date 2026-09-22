@@ -27,6 +27,16 @@ export async function getWorkflow(id) {
   return (res.dataArray && res.dataArray[0]) || null
 }
 
+// GET /workflows/by-key/:key — the same workflow, by the stable name the HOST
+// addresses it with (workflows.key, migration 0013). An app whose own URLs
+// read /flows/pool asks with the key it has; passing that key where an id
+// belongs is a 404 that reads like a missing flow rather than like a lookup
+// by the wrong thing.
+export async function getWorkflowByKey(key) {
+  const res = await authFetch(apiPath(`/workflows/by-key/${encodeURIComponent(key)}`))
+  return (res.dataArray && res.dataArray[0]) || null
+}
+
 // POST /workflows/save — one changeset entry. No `id` on the workflow (or on
 // a step inside it) inserts; an `id` patches; `{ id, deleted: true }` soft-
 // deletes. Returns every id touched (workflow + any steps).

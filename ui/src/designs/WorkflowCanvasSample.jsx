@@ -1,6 +1,4 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ROUTES } from '../routes.js'
 import { compileCondition, conditionToText, referencesFor, conditionFieldsFor } from '../conditions.js'
 import { layoutParams, askedFields, paramSamples, collectDeclarations, parseCellValue, formatCellValue, PARAM_TYPES, blankParam, validateDeclaration } from '../paramGroups.js'
 import { lastStepOutput, tryStep } from '../api/workflows.js'
@@ -1301,7 +1299,9 @@ export default function WorkflowCanvasSample(props) {
     workflow, actions, saving, running, run, visibleSteps, selectedIndex, readOnly,
     updateField, addStep, updateStep, updateStepPosition, removeStep,
     selectStep, closeDrawer, handleSave, handleRun,
-    palette, source, addStepFromPalette
+    palette, source, addStepFromPalette,
+    // Optional. Drawn only when the host has somewhere to go back to.
+    onBack
   } = props
 
   var [showRun, setShowRun] = useState(false)
@@ -1327,18 +1327,25 @@ export default function WorkflowCanvasSample(props) {
 
   return (
     <section>
-      {/* BACK TO WHERE THIS WAS OPENED FROM. Reading the destination off the
-          source rather than always sending people to the workflow list:
-          somebody who came from Jobs to connect two jobs never asked to visit
-          a list of workflows, and landing there is where the seam between the
-          two products starts to show. */}
-      <Link
-        to={(source && source.backTo) === 'jobs' ? ROUTES.jobs() : ROUTES.workflows()}
-        className="wf-muted"
-        style={{ fontSize: 13 }}
-      >
-        ← {(source && source.backLabel) || 'Workflows'}
-      </Link>
+      {/* BACK TO WHERE THIS WAS OPENED FROM, when there IS a back.
+          The destination is read off the source rather than always being the
+          workflow list: somebody who came from Jobs to connect two jobs never
+          asked to visit a list of workflows, and landing there is where the
+          seam between the two products starts to show.
+          It is a callback, not a <Link>: this canvas is dropped onto pages of
+          apps that need no Router above it, and a host that renders the
+          designer as its whole page has nowhere to go back to — it passes no
+          onBack and no link is drawn. */}
+      {onBack && (
+        <button
+          type="button"
+          className="wf-muted wf-link-btn"
+          style={{ fontSize: 13 }}
+          onClick={onBack}
+        >
+          ← {(source && source.backLabel) || 'Workflows'}
+        </button>
+      )}
 
       <div className="wf-builder-bar" style={{ marginTop: 8 }}>
         <div className="wf-builder-titles">

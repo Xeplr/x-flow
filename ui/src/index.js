@@ -88,7 +88,14 @@ export function registerWorkflowUI(config) {
 export { workflowRoutes } from './lib/routes.jsx'
 export { setRouteBase, getRouteBase, workflowPaths, ROUTES } from './routes.js'
 export { WorkflowListPage, WorkflowEditorPage } from './pages.jsx'
+// The designer as ONE component, for an app that has its own page to put it
+// on and does not want a section mounted at URLs — see WorkflowDesigner.jsx.
+export { WorkflowDesigner } from './WorkflowDesigner.jsx'
+export { configureApiBase as configureWorkflowApiBase } from './api/base.js'
 export { default as WorkflowListSample } from './designs/WorkflowListSample.jsx'
+// The designer's own canvas. Exported so a host can pass it to the routed
+// editor page, or wrap it, without reaching into designs/.
+export { default as FlowCanvas } from './designs/FlowCanvas.jsx'
 export { default as WorkflowEditorSample } from './designs/WorkflowEditorSample.jsx'
 export { useWorkflowListController } from './useWorkflowListController.js'
 export { useWorkflowEditorController } from './useWorkflowEditorController.js'
@@ -97,5 +104,10 @@ export { WORKFLOW_LIST_RULES, WORKFLOW_EDITOR_RULES } from './validateDesign.js'
 // canvas Design uses these to turn a palette item into a step rather than
 // re-deriving the bindings a job step needs.
 export { SOURCES, sourceFor, jobToStep, actionToStep, jobStepKey } from './stepSources.js'
+// What the canvas's arrows DO to the document, and how a flow starts. Both
+// are pure and tested on their own; a host writing its own designer builds on
+// these rather than re-deriving step keys and the example → params contract.
+export { keyFor, liveSteps, blankStep, addAfter, link, unlink, insertOn, rename, removeStep, edgesOf } from './flowEdits.js'
+export { TRIGGERS, triggerFor, paramsFromSample, sampleFromParams, describeStart, startReferences } from './flowStart.js'
 export { configureJobsApi } from './api/jobs.js'
 export * from './api/workflows.js'

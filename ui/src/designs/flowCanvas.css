@@ -1,0 +1,636 @@
+/* The flow designer's canvas — boxes, the arrows that grow them, and the
+   panel that asks what a new box is. Colours come from the host's theme
+   variables where it sets them (see workflow.css), with plain fallbacks so
+   the designer also renders on a page that sets none. */
+
+/* THE SIZES THE FORM IS DRAWN AT, in one place.
+   The table's type tracks the box's name rather than being set independently
+   — the step's name is the heading and its settings sit one notch under it,
+   and that relationship should survive somebody changing their mind about
+   either. Override these on .fc-wrap (or anywhere above it) to retune the
+   whole designer without touching a rule. */
+.fc-wrap {
+  --fc-name: 15px;      /* the step's name, on the front of the box */
+  --fc-form: 13px;      /* every value in the table */
+  --fc-label: 12.5px;   /* the name of a value */
+  --fc-small: 11.5px;   /* help and errors under a value */
+  --fc-row: 28px;       /* one line of the table */
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 520px;
+  background: var(--xeplr-bg-primary, #fbfaf7);
+}
+
+/* ── the bar ─────────────────────────────────────────────────────────── */
+.fc-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  border-bottom: 1px solid var(--xeplr-border-primary, #e3e0d8);
+}
+.fc-back { font-size: 13px; }
+.fc-title {
+  min-width: 220px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--xeplr-text-primary, #1c1b19);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+.fc-title:hover, .fc-title:focus { border-color: var(--xeplr-border-primary, #d6d3c9); outline: none; }
+.fc-status {
+  padding: 3px 8px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--xeplr-text-secondary, #57554f);
+  text-transform: capitalize;
+}
+.fc-spacer { flex-grow: 1; }
+
+/* ── the canvas ──────────────────────────────────────────────────────── */
+.fc-area { position: relative; flex-grow: 1; min-height: 0; }
+.fc-canvas {
+  height: 100%;
+  background-color: var(--xeplr-bg-primary, #fbfaf7);
+  background-image: radial-gradient(var(--xeplr-border-primary, #dcd9cf) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ── a box ───────────────────────────────────────────────────────────── */
+.fc-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 12px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+}
+/* The name and the type: what the box is, always on the front of it. */
+.fc-node-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  flex-shrink: 0;
+}
+/* Once the box is open the head is a heading over a table, so it gives up
+   some of its air — and the icon stops being the biggest thing on it. */
+.fc-node.is-open .fc-node-head { min-height: 0; }
+/* An open box is a form. `height: auto` is what lets it be MEASURED — the
+   canvas is told how tall it turned out to be, rather than being asked to
+   guess (see measureNode). Its panel scrolls rather than growing without
+   limit: a step with sixteen inputs must not be taller than the canvas. */
+.fc-node.is-open { height: auto; padding-bottom: 10px; }
+.fc-node-panel {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  max-height: 320px;
+  overflow: auto;
+}
+/* ONE LINE, ALWAYS. Wrapping defeats the point of tabs: the strip went to two
+   rows on db-push and the box grew to hold the control that was supposed to
+   cost one line. Past four tabs it scrolls sideways instead. */
+.fc-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1px;
+  margin: 0 -2px 2px;
+  padding: 0 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--xeplr-border-primary, #efece4);
+}
+.fc-tabs::-webkit-scrollbar { display: none; }
+.fc-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 3px 8px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--xeplr-text-secondary, #57554f);
+  font: inherit;
+  font-size: var(--fc-label, 12.5px);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fc-tab:hover { color: var(--xeplr-text-primary, #1c1b19); }
+.fc-tab.is-on {
+  border-bottom-color: var(--xeplr-accent, #1f6f60);
+  color: var(--xeplr-text-primary, #1c1b19);
+  font-weight: 600;
+}
+/* ── the inputs, as a TABLE ──────────────────────────────────────────────
+   Two columns, one line per input, hairline between them. A form — label
+   above box, eight times over — is three hundred pixels of box hanging over
+   the canvas, and it reads as hard before it has been read at all.
+   Everything here is deliberately a size smaller than the box's own name:
+   the step's name is the heading, and these are its settings. */
+.fc-table {
+  display: grid;
+  grid-template-columns: minmax(72px, 34%) 1fr;
+  align-items: stretch;
+  font-size: var(--fc-form, 13px);
+}
+.fc-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--fc-row, 30px);
+  padding: 1px 0;
+  border-top: 1px solid var(--xeplr-border-primary, #efece4);
+  min-width: 0;
+}
+.fc-table > .fc-cell:nth-child(-n + 2) { border-top: 0; }
+.fc-cell-key {
+  padding-right: 10px;
+  font-size: var(--fc-label, 12.5px);
+  color: var(--xeplr-text-secondary, #57554f);
+  overflow: hidden;
+}
+/* The rule between the two columns. Without it the values float in the middle
+   of the box with nothing holding them, which is what stops it reading as a
+   table at all. */
+.fc-cell-val {
+  padding-left: 2px;
+  border-left: 1px solid var(--xeplr-border-primary, #efece4);
+  /* so an error message drops under its control rather than beside it */
+  flex-wrap: wrap;
+}
+.fc-cell-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fc-cell.is-bad .fc-cell-name { color: var(--xeplr-danger, #b3261e); }
+.fc-in-req { color: var(--xeplr-danger, #b3261e); }
+
+/* BORDERLESS, because a border around every value is what turns a table back
+   into a form. The box only appears where the pointer is, or where the
+   caret is. */
+.fc-in-control {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--xeplr-text-primary, #1c1b19);
+  font: inherit;
+  font-size: var(--fc-form, 13px);
+}
+.fc-in-control:hover { border-color: var(--xeplr-border-primary, #e3e0d8); }
+.fc-in-control:focus {
+  outline: none;
+  border-color: var(--xeplr-accent, #1f6f60);
+  background: var(--xeplr-bg-primary, #fcfbf7);
+}
+.fc-in-control::placeholder { color: var(--xeplr-text-tertiary, #8d8a82); }
+.fc-in-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--fc-form, 13px) - 1px); resize: vertical; }
+.fc-in-check { width: 15px; height: 15px; margin: 0 0 0 6px; accent-color: var(--xeplr-accent, #1f6f60); }
+.fc-in-help { width: 100%; padding: 0 6px 2px; font-size: var(--fc-small, 11.5px); color: var(--xeplr-text-secondary, #57554f); }
+.fc-in-help.is-bad { color: var(--xeplr-danger, #b3261e); }
+.fc-in-control.is-bad { border-color: var(--xeplr-danger, #b3261e); }
+
+/* ── designing the form, without leaving the flow ─────────────────────── */
+.fc-node-more { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.fc-mini {
+  padding: 2px 7px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 999px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-text-secondary, #57554f);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fc-mini:hover { border-color: var(--xeplr-accent, #1f6f60); color: var(--xeplr-accent, #1f6f60); }
+
+/* BIG, because a form designer needs the room — a modal that scrolls its own
+   canvas is worse than no modal. */
+.fc-modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 19, 17, 0.45);
+}
+.fc-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1600px, 96vw);
+  height: min(1000px, 92vh);
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 14px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  box-shadow: 0 24px 60px rgba(20, 19, 17, 0.3);
+  overflow: hidden;
+}
+.fc-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--xeplr-border-primary, #e3e0d8);
+}
+.fc-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.fc-modal-body > * { flex: 1; min-height: 0; }
+
+/* ── the step's own output ───────────────────────────────────────────── */
+.fc-out { display: flex; flex-direction: column; gap: 6px; }
+.fc-out-area {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 7px;
+  background: var(--xeplr-bg-primary, #fcfbf7);
+  color: var(--xeplr-text-primary, #1c1b19);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(var(--fc-form, 13px) - 1px);
+  resize: vertical;
+}
+.fc-out-area:focus { outline: none; border-color: var(--xeplr-accent, #1f6f60); }
+.fc-out-area.is-bad { border-color: var(--xeplr-danger, #b3261e); }
+
+/* What a LATER step will be offered, spelled the way it is written. Shown
+   here so the bargain is visible: this is what filling the example buys. */
+.fc-offers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--xeplr-border-primary, #efece4);
+}
+.fc-offer {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fc-small, 11.5px);
+}
+.fc-offer code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--xeplr-accent, #1f6f60);
+  white-space: nowrap;
+}
+.fc-offer-eg {
+  color: var(--xeplr-text-secondary, #57554f);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-tab-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--xeplr-accent, #1f6f60);
+}
+
+.fc-node.is-selected {
+  border-color: var(--xeplr-accent, #1f6f60);
+  border-width: 1.5px;
+  box-shadow: 0 8px 22px rgba(28, 27, 25, 0.1);
+}
+/* While a loose arrow is out, every other box is a place to drop it. */
+.fc-node.is-target:not(.is-selected):hover {
+  border-color: var(--xeplr-accent, #1f6f60);
+  box-shadow: 0 0 0 3px rgba(31, 111, 96, 0.12);
+}
+
+.fc-node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--xeplr-bg-tertiary, #f1efe8);
+  color: var(--xeplr-text-secondary, #57554f);
+}
+.fc-node-icon.fc-condition { background: rgba(31, 111, 96, 0.1); color: var(--xeplr-accent, #1f6f60); }
+/* A screen is the one step a PERSON is inside, so it is the one that is not
+   the canvas's own colour. */
+.fc-node-icon.fc-screen { background: rgba(124, 92, 196, 0.12); color: #7c5cc4; }
+
+.fc-node-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-grow: 1; }
+.fc-node-name {
+  width: 100%;
+  height: 24px;
+  padding: 0 4px;
+  margin-left: -4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--xeplr-text-primary, #1c1b19);
+  font: inherit;
+  font-size: var(--fc-name, 15px);
+  font-weight: 600;
+}
+.fc-node-name:focus { border-color: var(--xeplr-border-primary, #d6d3c9); outline: none; }
+.fc-node-name.is-static { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 24px; }
+.fc-node-says { display: flex; align-items: center; gap: 6px; font-size: var(--fc-label, 12.5px); min-width: 0; }
+.fc-node-says .wf-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The action picker reads as the line it replaces — an empty one is the only
+   thing left to answer on a new step, so it is underlined rather than boxed:
+   loud enough to be the next thing seen, quiet enough not to look like a form. */
+.fc-node-does {
+  min-width: 0;
+  max-width: 100%;
+  width: auto;
+  height: 22px;
+  padding: 0 2px;
+  border: none;
+  border-bottom: 1px dashed var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 0;
+  background: transparent;
+  color: var(--xeplr-text-primary, #1c1b19);
+  font: inherit;
+  font-size: var(--fc-label, 12.5px);
+  cursor: pointer;
+}
+.fc-node-does:focus { outline: none; border-bottom-color: var(--xeplr-accent, #1f6f60); }
+.fc-node-does:invalid, .fc-node-does[data-empty='yes'] { color: var(--xeplr-text-secondary, #57554f); }
+
+.fc-tag {
+  padding: 2px 7px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--xeplr-text-secondary, #57554f);
+}
+.fc-tag.fc-screen {
+  border-color: rgba(124, 92, 196, 0.35);
+  background: rgba(124, 92, 196, 0.1);
+  color: #7c5cc4;
+}
+.fc-tag.fc-condition {
+  border-color: rgba(31, 111, 96, 0.35);
+  background: rgba(31, 111, 96, 0.1);
+  color: var(--xeplr-accent, #1f6f60);
+}
+
+.fc-node-remove {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 6px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-text-secondary, #57554f);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ── the arrow and the loose one, under the selected box ─────────────── */
+.fc-handles {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+.fc-arrow {
+  border: 0;
+  background: transparent;
+  color: var(--xeplr-accent, #1f6f60);
+  padding: 0;
+  cursor: pointer;
+}
+.fc-arrow:hover { color: var(--xeplr-accent-hover, #164e44); }
+.fc-loose {
+  width: 26px;
+  height: 26px;
+  margin-top: 4px;
+  border: 1px dashed var(--xeplr-accent, #1f6f60);
+  border-radius: 999px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-accent, #1f6f60);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: grab;
+}
+.fc-loose:active { cursor: grabbing; }
+
+/* ── the + that sits on an arrow ─────────────────────────────────────── */
+.fc-insert {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--xeplr-accent, #1f6f60);
+  border-radius: 999px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-accent, #1f6f60);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(28, 27, 25, 0.12);
+}
+
+/* ── the loose arrow while it is being dragged ───────────────────────── */
+.fc-linking {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  fill: var(--xeplr-accent, #1f6f60);
+}
+
+/* ── what is it? ─────────────────────────────────────────────────────── */
+.fc-chooser-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(28, 27, 25, 0.12);
+}
+.fc-chooser {
+  width: 300px;
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 12px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  box-shadow: 0 18px 40px rgba(28, 27, 25, 0.16);
+  overflow: hidden;
+}
+.fc-chooser-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--xeplr-border-primary, #ece9e1);
+  font-size: 14px;
+  font-weight: 600;
+}
+.fc-chooser-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: var(--xeplr-text-primary, #1c1b19);
+  cursor: pointer;
+}
+.fc-chooser-row:hover { background: var(--xeplr-bg-tertiary, #f3f6f5); }
+.fc-chooser-row strong { display: block; font-size: 14px; }
+.fc-chooser-row small { display: block; font-size: 12px; color: var(--xeplr-text-secondary, #57554f); }
+.fc-chooser-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 8px;
+  color: var(--xeplr-text-secondary, #57554f);
+}
+.fc-chooser-cancel {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-top: 1px solid var(--xeplr-border-primary, #ece9e1);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--xeplr-text-secondary, #57554f);
+  cursor: pointer;
+}
+
+.fc-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px;
+  font-size: 13px;
+  border-top: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  background: var(--xeplr-bg-secondary, #ffffff);
+}
+.fc-empty p { margin: 0; }
+
+/* ── how this flow starts: the gear on the bar, and its panel ────────── */
+.fc-gear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 8px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-text-secondary, #57554f);
+  cursor: pointer;
+}
+.fc-gear[aria-expanded="true"] {
+  border-color: var(--xeplr-accent, #1f6f60);
+  color: var(--xeplr-accent, #1f6f60);
+  background: rgba(31, 111, 96, 0.08);
+}
+.fc-start-says { font-size: 12px; }
+
+.fc-panel {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 400px;
+  max-width: calc(100% - 28px);
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 12px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  box-shadow: 0 18px 40px rgba(28, 27, 25, 0.16);
+  z-index: 3;
+}
+.fc-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--xeplr-border-primary, #ece9e1);
+  font-size: 14px;
+}
+.fc-panel-close {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--xeplr-border-primary, #e3e0d8);
+  border-radius: 6px;
+  background: var(--xeplr-bg-secondary, #ffffff);
+  color: var(--xeplr-text-secondary, #57554f);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.fc-panel-body { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+
+.fc-field { display: flex; flex-direction: column; gap: 5px; }
+.fc-label { font-size: 12px; font-weight: 600; color: var(--xeplr-text-secondary, #57554f); }
+.fc-field select,
+.fc-field input {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 8px;
+  background: var(--xeplr-input-bg, #ffffff);
+  color: var(--xeplr-text-primary, #1c1b19);
+  font: inherit;
+  font-size: 14px;
+}
+.fc-example {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--xeplr-border-primary, #d6d3c9);
+  border-radius: 8px;
+  background: var(--xeplr-bg-primary, #fbfaf7);
+  color: var(--xeplr-text-primary, #1c1b19);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.fc-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--xeplr-border-primary, #ece9e1);
+  border-radius: 8px;
+  background: var(--xeplr-bg-primary, #fbfaf7);
+  font-size: 12px;
+  color: var(--xeplr-text-secondary, #57554f);
+}
+.fc-note.is-bad {
+  border-color: rgba(185, 28, 28, 0.35);
+  background: rgba(185, 28, 28, 0.06);
+  color: #b91c1c;
+}

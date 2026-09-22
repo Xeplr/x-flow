@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { raiseSnackbar } from '@xeplr/ui-utils'
-import { getWorkflow, saveWorkflow, runWorkflow } from './api/workflows.js'
+import { getWorkflow, getWorkflowByKey, saveWorkflow, runWorkflow } from './api/workflows.js'
 import { listActions } from './api/actions.js'
 import { listJobs } from './api/jobs.js'
 import { sourceFor, isReadOnly } from './stepSources.js'
-import { ROUTES } from './routes.js'
+import * as edits from './flowEdits.js'
 
 // WHICH FUNCTION FETCHES EACH PALETTE.
 //
@@ -33,7 +32,17 @@ function blankStep(position) {
   }
 }
 
-export function useWorkflowEditorController({ workflowId, newKind }) {
+/**
+ * @param workflowId  the workflow to edit, or omit with `newKind` for a new one
+ * @param newKind     'workflow' | 'jobs' — which palette a new one starts with
+ * @param onOpened    (id) → void, called when a NEW workflow has just been
+ *                    saved and therefore has an id. A routed host navigates to
+ *                    that workflow's URL; a host rendering the designer on a
+ *                    page of its own has nowhere to go and passes nothing.
+ *                    NOT react-router's navigate: a designer dropped onto a
+ *                    page must not require a Router above it.
+ */
+export function useWorkflowEditorController({ workflowId, workflowKey, newKind, onOpened }) {
   const [workflow, setWorkflow] = useState(null)
   const [actions, setActions] = useState([])
   // The palette for THIS workflow's kind. Separate from `actions`, which the
@@ -45,7 +54,6 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
   const [run, setRun] = useState(null)
   const [jsonErrors, setJsonErrors] = useState({})
   const [selectedIndex, setSelectedIndex] = useState(null)
-  const navigate = useNavigate()
 
   useEffect(() => {
     listActions().then(setActions).catch((err) => raiseSnackbar(err.message, { design: 'error' }))
@@ -71,17 +79,22 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
     return () => { cancelled = true }
   }, [kind, actions])
 
+  // BY ID OR BY THE HOST'S OWN NAME FOR IT. An app whose URLs read
+  // /flows/pool holds a key, not an id (workflows.key, migration 0013), and
+  // has nothing to translate it with — so it says which it has rather than
+  // passing one where the other belongs.
   useEffect(() => {
     setRun(null)
     // ONLY here, where the workflow does not exist yet. Below, a fetched
     // workflow's own `kind` is whatever the row says and nothing overwrites it.
-    if (!workflowId) { setWorkflow(blankWorkflow(newKind)); return }
+    if (!workflowId && !workflowKey) { setWorkflow(blankWorkflow(newKind)); return }
     let cancelled = false
-    getWorkflow(workflowId)
+    var fetching = workflowId ? getWorkflow(workflowId) : getWorkflowByKey(workflowKey)
+    fetching
       .then((w) => { if (!cancelled) setWorkflow(w) })
       .catch((err) => raiseSnackbar(err.message, { design: 'error' }))
     return () => { cancelled = true }
-  }, [workflowId, newKind])
+  }, [workflowId, workflowKey, newKind])
 
   function updateField(field, value) {
     setWorkflow((w) => ({ ...w, [field]: value }))
@@ -136,6 +149,59 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
     })
   }
 
+  // ── HOW A FLOW GROWS ──────────────────────────────────────────────────
+  //
+  // Each of these is one call into flowEdits, which owns what the edit DOES
+  // to the workflow (and is tested there, without React). What belongs here
+  // is only what the SCREEN does afterwards: select the new box, so the
+  // cursor lands in its name.
+
+  /**
+   * The very first box of an empty flow, which has no arrow to come out of.
+   * Temporary: Start is always there once it lands, and everything grows from
+   * its arrow — then this goes with the empty state that calls it.
+   */
+  function addFirst(type, name) {
+    setWorkflow((w) => {
+      var step = edits.blankStep(type, name, [], { x: 80, y: 80 })
+      var steps = (w.steps || []).concat([step])
+      setSelectedIndex(steps.length - 1)
+      return Object.assign({}, w, { steps: steps })
+    })
+  }
+
+  /** From a box's own arrow: a new step, linked from `index`. */
+  function addAfter(index, type, name) {
+    setWorkflow((w) => {
+      var out = edits.addAfter(w, index, type, name)
+      setSelectedIndex(out.index)
+      return out.workflow
+    })
+  }
+
+  /** From the + on an arrow: a new step between two that already exist. */
+  function insertOn(fromIndex, target, type, name) {
+    setWorkflow((w) => {
+      var out = edits.insertOn(w, fromIndex, target, type, name)
+      if (out.index !== -1) setSelectedIndex(out.index)
+      return out.workflow
+    })
+  }
+
+  /** From dragging a loose arrow onto a box. */
+  function linkSteps(fromIndex, toIndex) {
+    setWorkflow((w) => edits.link(w, fromIndex, toIndex))
+  }
+
+  function unlinkStep(fromIndex, target) {
+    setWorkflow((w) => edits.unlink(w, fromIndex, target))
+  }
+
+  /** The name is the step's; the key follows it, and so does every arrow. */
+  function renameStep(index, name) {
+    setWorkflow((w) => edits.rename(w, index, name))
+  }
+
   function selectStep(index) { setSelectedIndex(index) }
   function closeDrawer() { setSelectedIndex(null) }
 
@@ -166,6 +232,11 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
   // actually soft-deletes the row; genericController only acts on entries
   // present in the changeset, it does not diff against what already exists
   // in the DB. Hidden from the visible list immediately either way.
+  function removeStepAndArrows(index) {
+    setWorkflow((w) => edits.removeStep(w, index))
+    setSelectedIndex(null)
+  }
+
   function removeStep(index) {
     setWorkflow((w) => {
       var target = w.steps[index]
@@ -212,7 +283,7 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
       var fresh = await getWorkflow(savedId)
       setWorkflow(fresh)
       raiseSnackbar('Workflow saved', { design: 'success' })
-      if (wasNew) navigate(ROUTES.workflowEditor(fresh.id), { replace: true })
+      if (wasNew && onOpened) onOpened(fresh.id)
     } catch (err) {
       raiseSnackbar(err.message, { design: 'error' })
     } finally {
@@ -246,6 +317,9 @@ export function useWorkflowEditorController({ workflowId, newKind }) {
     workflow, actions, saving, running, run, jsonErrors, visibleSteps, selectedIndex, readOnly,
     updateField, addStep, updateStep, updateStepJSON, updateStepPosition, removeStep,
     selectStep, closeDrawer, handleSave, handleRun,
+    // The canvas's own edits — see flowEdits.js.
+    addAfter, addFirst, insertOn, linkSteps, unlinkStep, renameStep, removeStepAndArrows,
+    edges: edits.edgesOf(workflow || { steps: [] }),
     // The palette and its shape. A Design reads `source.pickFirst` to decide
     // whether "Add step" is a button (pick the action later) or a picker
     // (choose the job first) — rather than branching on the kind itself, which

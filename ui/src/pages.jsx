@@ -1,4 +1,6 @@
+import { useNavigate } from 'react-router-dom'
 import { useDesignValidator } from '@xeplr/ui-account'
+import { ROUTES } from './routes.js'
 import { useWorkflowListController } from './useWorkflowListController.js'
 import { useWorkflowEditorController } from './useWorkflowEditorController.js'
 import WorkflowListSample from './designs/WorkflowListSample.jsx'
@@ -17,10 +19,26 @@ export function WorkflowListPage({ design, ...props }) {
 }
 
 export function WorkflowEditorPage({ workflowId, newKind, design, ...props }) {
-  var controller = useWorkflowEditorController({ workflowId: workflowId, newKind: newKind, ...props })
+  // The ROUTED host is where react-router lives now: the controller and the
+  // canvas take callbacks, so the designer can also be dropped onto a page
+  // with no Router above it (see WorkflowDesigner).
+  var navigate = useNavigate()
+  var controller = useWorkflowEditorController({
+    workflowId: workflowId,
+    newKind: newKind,
+    onOpened: (id) => navigate(ROUTES.workflowEditor(id), { replace: true }),
+    ...props
+  })
   var ref = useDesignValidator('WorkflowEditorPage', WORKFLOW_EDITOR_RULES)
   var View = design || WorkflowCanvasSample
   // wf-builder opts this route out of the centred column (see index.css) —
   // the canvas wants the width, unlike every other page in this app.
-  return <div ref={ref} className="wf-builder"><View {...controller} /></div>
+  return (
+    <div ref={ref} className="wf-builder">
+      <View
+        {...controller}
+        onBack={() => navigate((controller.source && controller.source.backTo) === 'jobs' ? ROUTES.jobs() : ROUTES.workflows())}
+      />
+    </div>
+  )
 }

@@ -135,3 +135,16 @@
   background: var(--xeplr-accent-soft); color: var(--accent); vertical-align: middle;
 }
 
+
+/* A link that is a button, because the canvas has no Router above it — the
+   designer is dropped onto host pages. Looks like the link it replaced. */
+.wf-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+.wf-link-btn:hover { text-decoration: underline; }

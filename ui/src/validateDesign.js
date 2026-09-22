@@ -8,16 +8,22 @@ export var WORKFLOW_LIST_RULES = [
   { selector: 'form button[type="submit"]', label: 'Create button' }
 ]
 
-// `anyOf` rather than a bare selector on the two editing controls, because
-// there is a workflow this page legitimately renders WITHOUT them: a flow of
-// screens, which is designed in another app and drawn here read-only (see
-// stepSources.js's `screens` source). Such a canvas shows the notice in their
+// `anyOf` rather than a bare selector on the editing control, because there is
+// a workflow this page legitimately renders WITHOUT it: a flow of screens,
+// which is designed in another app and drawn here read-only (see
+// stepSources.js's `screens` source). Such a canvas shows the notice in its
 // place, which is a complete design and not a broken one — the rule is "this
 // page offers a way to edit, or says where the editing happens instead".
+//
+// THERE IS NO "ADD STEP" RULE, and its absence is the design: a box is born
+// from the arrow of the box before it, from the + on an arrow, or from the
+// loose arrow dragged onto another box (designs/FlowCanvas.jsx). Every one of
+// those belongs to a SELECTION, so none of them is in the document when
+// nothing is selected — a rule requiring one would fire on a canvas that is
+// working exactly as intended. What a designer must always offer is a name
+// and a way to save; how a step is added is the design's own business.
 export var WORKFLOW_EDITOR_RULES = [
   { id: 'wf-editor-name', label: 'Workflow name input' },
-  { anyOf: ['[data-role="add-step"]', '[data-role="read-only-notice"]'],
-    label: 'Add step button, or the read-only notice in its place' },
   { anyOf: ['[data-role="save-workflow"]', '[data-role="read-only-notice"]'],
     label: 'Save button, or the read-only notice in its place' }
 ]
