@@ -170,7 +170,7 @@ xeplr-workflow/
 ├─ db/xcfgSetup.js          shared @xeplr/actions attachConfig({ service: 'xeplr-workflow' })
 ├─ models/                  Company, Workspace, Workflow, WorkflowStep, WorkflowRun,
 │                           WorkflowStepRun, WorkflowResumeKey, WorkflowRunEdge
-├─ migrations/              0003–0013, workflow's own tables
+├─ migrations/              0003–0014, workflow's own tables
 ├─ migrations-tenants/      0001–0002: standalone workflow's companies / workspaces (skipped with tenantTables: false)
 ├─ migrations-auth/         rows for the AUTH database (roles, menus, apis)
 └─ test/                    run.mjs + *.test.mjs
@@ -231,6 +231,21 @@ through this facade, and addressed by a `key` that app chooses. The workflow
 routes refuse to create or save one — *"This flow is designed in Configure UI"*
 — and the builder shows it read-only. Runs and history are visible as usual.
 
+**A flow no longer has to be one of these.** Since the designer offers a
+Screen step, an app can draw an ordinary workflow — fetch, decide, ask a
+person, carry on — give it a `key`, and run it through these same routes. So:
+
+| | kind `screens` | an ordinary workflow with a `key` |
+|---|---|---|
+| designed by | the app that owns the screens, via `PUT /flows/:key` | the designer, like any workflow |
+| `GET/PUT /flows/:key`, `publish` | yes | **no** — 404, they generate screens-only steps and would delete a design they cannot express |
+| `POST /flows/:key/runs`, `GET /flows/:key/runs` | yes | **yes**, by key |
+| `GET /flows/runs/:id`, `POST …/submit` | yes | **yes** |
+| must be published to run | yes — publish is what checks the design | no; nothing else gates a workflow run either, and demanding a status it is never given would be a trap |
+
+The engine never knew the difference; now the run routes do not either. Only
+*designing* is still kind-gated.
+
 Mounted at `<mount>/flows` by `registerWorkflow`, and returned on its own as
 `flowsRouter` for a host that mounts it elsewhere. Every route is gated.
 
@@ -267,6 +282,24 @@ facade finds the waiting step's key itself and resumes through `resumeByKey`.
 `recordId` — the row the screen wrote into its own table — is kept on the step's
 output, so later steps and their conditions can use it.
 
+**A screen is not only for a flow of screens.** The designer offers *Screen*
+beside *Action* and *Condition* (`@xeplr/ui-workflow`), so an ordinary
+workflow can fetch, decide, ask a person and carry on. That used to be a trap:
+the engine parked the run correctly — a screen step is a wait step like any
+other — while the two routes that show and resume one answered 404 unless the
+whole workflow was kind `screens`. So **`GET /flows/runs/:runId` and
+`POST …/submit` now take a run of any workflow.** Designing, validating and
+publishing a *flow* still require kind `screens`; this is only about a run
+that is sitting on a screen, whoever put it there.
+
+**Only a screen is submitted there.** Now that any run reaches the route,
+"waiting" is no longer the same as "waiting for a person": a step can be
+parked on an email that has not arrived or a callback nobody has made, and
+those resume through the engine's own key, from whatever they are waiting FOR.
+Submitting one is refused with `NOT_A_SCREEN`, naming the step — otherwise
+somebody standing in front of a run could hand it the answer it was waiting
+for the world to give.
+
 **A run belongs to the company it was started in.** Another company's flow is
 not there, and its run ids are 404, not 403 — nothing confirms they exist.
 
@@ -297,6 +330,8 @@ Two directories, two databases:
 | `0010` | `workflow_steps.sampleOutput` |
 | `0011` | `workflow_steps.params` |
 | `0012` | `workflows.kind` (`workflow` \| `jobs`, default `workflow`) |
+| `0013` | `workflows.key` — a stable name a host addresses a flow by, unique per tenant while it is set |
+| `0014` | `workflows.trigger` (jsonb) — **what is supposed to start a run**, beside what comes in with it. One shape per kind: `{kind:'manual'}`, `{kind:'api'}`, `{kind:'schedule',cron}`, `{kind:'file',folder,named}`, `{kind:'email',mailbox,folder}`. NULL means "started however it is called", so every existing workflow behaves exactly as it did. **Nothing arms these yet** — the designer records the intent; the pollers and the hook endpoint read it when they land |
 | `migrations-auth/0001_workflow_access` | Roles `Super Admin`, `CompanyAdmin`, `Creator`, `Viewer`; menus `Home`, `Actions`, `Configuration`, `Access Control`; `apis` rows; role → menu/api matrix |
 | `migrations-auth/0003_nav_menus` | Menus `Dashboards`, `Jobs`, `Select Workspace`, `Select Company` (all `workflows:view`) + mappings |
 

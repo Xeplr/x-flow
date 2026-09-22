@@ -37,6 +37,7 @@ const dbPath = require.resolve('../lib/db.js')
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: fakeDb, children: [], paths: [] }
 
 const flows = require('../lib/flows.js')
+const workflowRunner = require('../lib/workflowRunner.js')
 const buildFlowsRouter = require('../lib/flowsRouter.js')
 
 // The one action every screen step names. Registered for real — the engine
@@ -412,6 +413,132 @@ console.log('\nthings that are simply not there')
   check('an unknown run is a 404 with a code', noRun.status === 404 && noRun.body.code === 'RUN_NOT_FOUND')
   const badValues = await call('POST', '/flows/runs/' + branchRunId + '/submit', { values: [1, 2] })
   check('`values` that is not an object is refused', badValues.status === 400)
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// A SCREEN INSIDE AN ORDINARY WORKFLOW.
+//
+// The designer offers Screen beside Action and Condition, so a screen is no
+// longer something only a flow-of-screens can hold. It used to be a trap: the
+// engine parked the run correctly — a screen step is a wait step like any
+// other — but the two routes that show and resume one answered 404 unless the
+// whole workflow was kind 'screens'. A step that can be drawn and can never
+// be finished is worse than one that cannot be drawn.
+console.log('\na screen in an ordinary workflow')
+{
+  // Seeded directly: /flows/:key/runs starts FLOWS, and the point here is a
+  // workflow that is not one.
+  await runWithMt({ mtId1: 'c1' }, async () => {
+    await fakeDb.model('Workflow').query().insert({
+      id: 'wf_mixed', name: 'Mixed', kind: 'workflow', status: 'published'
+    })
+    await fakeDb.model('WorkflowStep').query().insert({
+      id: 'st_ask', workflowId: 'wf_mixed', stepKey: 'ask', name: 'Ask the manager',
+      actionName: 'screen-show', kind: 'wait', onError: 'stop',
+      values: { screen: 'approval_form' }, position: 0, transitions: null
+    })
+  })
+
+  const run = await runWithMt({ mtId1: 'c1' }, () => workflowRunner.startRun('wf_mixed', {}, { user: { id: 'u1' } }))
+
+  const seen = await call('GET', '/flows/runs/' + run.id)
+  check('the run can be opened, though its workflow is not a flow', seen.status === 200)
+  check('...and says which screen it is parked on', seen.body.screen === 'approval_form')
+
+  const done = await call('POST', '/flows/runs/' + run.id + '/submit', { values: { approved: true } })
+  check('submitting it works — the trap is closed', done.status === 200)
+  check('...and the run moves on', done.body.status === 'Completed' || done.body.status !== 'waiting')
+
+  const stepRun = fakeDb.store.WorkflowStepRun.find((sr) => sr.runId === run.id && sr.stepKey === 'ask')
+  check('...with what the person typed as the step output', stepRun && stepRun.output && stepRun.output.approved === true)
+}
+
+console.log('\na flow the designer drew, run by the same page')
+{
+  // What a flow MEANS has widened: not only "kind screens, designed
+  // elsewhere" but an ordinary workflow drawn in the designer, addressed by
+  // the key its app gave it. The page that starts and resumes one must not
+  // care which it is looking at.
+  await runWithMt({ mtId1: 'c1' }, async () => {
+    await fakeDb.model('Workflow').query().insert({
+      id: 'wf_drawn', key: 'drawn', name: 'Drawn here', kind: 'workflow', status: 'draft'
+    })
+    await fakeDb.model('WorkflowStep').query().insert({
+      id: 'st_form', workflowId: 'wf_drawn', stepKey: 'form', name: 'Fill it in',
+      actionName: 'screen-show', kind: 'wait', onError: 'stop',
+      values: { screen: 'intake_form' }, position: 0, transitions: null
+    })
+  })
+
+  const started = await call('POST', '/flows/drawn/runs', {})
+  check('it starts by key, like any flow', started.status === 201)
+  check('...parked on its first screen', started.body.screen === 'intake_form')
+
+  // A draft is refused for a SCREENS flow, where publish is what checks the
+  // design. A drawn one has no publish step anywhere, so demanding one would
+  // make every flow this app draws unrunnable.
+  check('a draft drawn here still runs', started.body.status === 'waiting')
+
+  const mine = await call('GET', '/flows/drawn/runs?mine=1')
+  check('its runs are listed by key too', mine.status === 200 && mine.body.length === 1)
+
+  const done = await call('POST', '/flows/runs/' + started.body.runId + '/submit', { values: { name: 'Ada' } })
+  check('and it is submitted the same way', done.status === 200)
+}
+
+console.log('\ndesigning one is still not the same as running one')
+{
+  // putFlow and publishFlow generate step rows from a screens-only
+  // description. Pointed at a workflow drawn in the designer they would
+  // delete a design they cannot express, so they stay kind-gated.
+  const put = await call('PUT', '/flows/drawn', { steps: [{ stepKey: 'a', screen: 's' }] })
+  check('PUT does not touch a workflow drawn in the designer', put.status === 404)
+  const pub = await call('POST', '/flows/drawn/publish', {})
+  check('neither does publish', pub.status === 404)
+  const seen = await call('GET', '/flows/drawn')
+  check('nor does the screens-shaped read', seen.status === 404)
+}
+
+console.log('\nwaiting is not the same as waiting for a PERSON')
+{
+  // Now that any run reaches this route, a step parked on something that is
+  // not a screen — an email that has not arrived, a callback nobody has made
+  // — is one POST away from being answered by whoever happens to be looking
+  // at the run. It is resumed by what it is waiting FOR, through the engine's
+  // own key, and not by a browser.
+  //
+  // A real wait step, registered like any other action, rather than a screen
+  // step edited afterwards: the engine resolves the action while it parks, so
+  // changing it underneath is a race and not a test.
+  actions.register({
+    name: 'await-reply',
+    description: 'Parks until the reply arrives.',
+    requires: [],
+    inputSchema: [],
+    execute: async function () { return {} }
+  })
+
+  await runWithMt({ mtId1: 'c1' }, async () => {
+    await fakeDb.model('Workflow').query().insert({
+      id: 'wf_wait', name: 'Waits', kind: 'workflow', status: 'published'
+    })
+    await fakeDb.model('WorkflowStep').query().insert({
+      id: 'st_mail', workflowId: 'wf_wait', stepKey: 'mail', name: 'Wait for the reply',
+      actionName: 'await-reply', kind: 'wait', onError: 'stop',
+      values: {}, position: 0, transitions: null
+    })
+  })
+  const run = await runWithMt({ mtId1: 'c1' }, () => workflowRunner.startRun('wf_wait', {}, { user: { id: 'u1' } }))
+  check('it parks, like any wait step', run.status === 'waiting')
+
+  const seen = await call('GET', '/flows/runs/' + run.id)
+  check('the run can still be read — there is no screen to show', seen.status === 200 && seen.body.screen === null)
+
+  const refused = await call('POST', '/flows/runs/' + run.id + '/submit', { values: { approved: true } })
+  check('a browser cannot answer what the world is supposed to answer',
+    refused.status === 409 && refused.body.code === 'NOT_A_SCREEN')
+  check('...and says which step, by the name the designer gave it',
+    /Wait for the reply/.test(refused.body.message))
 }
 
 server.close()

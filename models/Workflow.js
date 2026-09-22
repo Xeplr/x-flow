@@ -27,6 +27,10 @@ class Workflow extends BaseModel {
         description: { type: ['string', 'null'], maxLength: 1000 },
         // [{ name, type, required, default, description, order }]
         params: { type: ['array', 'null'] },
+        // WHAT STARTS A RUN, as the designer recorded it — { kind, … }, one
+        // shape per kind (see migrations/0014). The engine does not arm
+        // anything from it yet; it is the intent the arming work will read.
+        trigger: { type: ['object', 'null'] },
         status: { type: 'string', maxLength: 20 },
         // WHAT THE BUILDER OFFERS, not what the engine does — 'workflow' (the
         // action catalogue), 'jobs' (the job list), or 'screens' (a flow,
