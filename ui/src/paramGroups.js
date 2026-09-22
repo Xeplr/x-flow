@@ -360,3 +360,49 @@ export function formatCellValue(field, value) {
   }
   return JSON.stringify(value, null, 2)
 }
+
+/** The tab an ungrouped field lives on — what the step needs to run. */
+export var MAIN_TAB = 'Inputs'
+
+/**
+ * The step's inputs as TABS: the main one, then a tab per group.
+ *
+ * Same two declarations as layoutParams, read for a different shape. The
+ * canvas puts this form INSIDE the box, on the canvas, and there a collapsed
+ * group is still a row of box — open one and the box grows, the arrow under
+ * it moves, and the whole flow below shifts to make room for four filters
+ * nobody was looking at. Tabs cost one line whatever is behind them, and the
+ * box is the same height with `Filters` open as with it shut.
+ *
+ * `showWhen` still decides what is asked, so a tab whose every field is
+ * branched away does not appear at all — which is why the caller has to cope
+ * with the tab it was showing disappearing.
+ *
+ * @returns [{ name, fields, filled }] — `filled` is how many of that tab's
+ *   fields somebody has actually set, so a tab can say it is holding
+ *   something without being opened. Empty when the action takes no input.
+ */
+export function paramTabs(schema, values) {
+  var main = { name: MAIN_TAB, fields: [], filled: 0 }
+  var groups = []
+  var byName = {}
+
+  ;(schema || []).forEach(function(f) {
+    if (!f || !f.name) return
+    if (!visibleWhen(f, values)) return
+    var tab = main
+    if (f.group) {
+      if (!byName[f.group]) {
+        byName[f.group] = { name: f.group, fields: [], filled: 0 }
+        groups.push(byName[f.group])
+      }
+      tab = byName[f.group]
+    }
+    tab.fields.push(f)
+    if (hasValue(f, values)) tab.filled += 1
+  })
+
+  // The main tab leads even when the schema opens with a grouped field: it is
+  // what the step needs to run, and the groups are what it will also accept.
+  return (main.fields.length ? [main] : []).concat(groups)
+}

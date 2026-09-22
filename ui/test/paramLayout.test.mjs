@@ -9,7 +9,7 @@
 // --preserve-symlinks: see actionCatalog.test.mjs.
 
 import { createRequire } from 'node:module'
-import { layoutParams, askedFields } from '../src/paramGroups.js'
+import { layoutParams, askedFields, paramTabs, MAIN_TAB } from '../src/paramGroups.js'
 
 const require = createRequire(import.meta.url)
 const builtins = require('@xeplr/actions').builtins
@@ -119,6 +119,56 @@ console.log('\nevery shipped schema still lays out')
     rows.forEach((r) => { if (r.kind === 'group' && !r.fields.length) lost.push(d.name + ' empty group') })
   })
   check('no field is dropped or duplicated: ' + (lost.join(', ') || 'none'), lost.length === 0)
+}
+
+// ── THE SAME DECLARATIONS AS TABS ──────────────────────────────────────
+// The canvas draws this form inside a box that sits ON the canvas, where a
+// collapsed group is still a row of box and opening one moves every arrow
+// below it. Tabs cost one line whatever is behind them.
+console.log('\ninputs as tabs')
+{
+  const read = Object.keys(builtins).map((k) => builtins[k]).find((d) => d.name === 'email-read')
+  const tabs = paramTabs(read.inputSchema, {})
+  check('the main tab leads', tabs[0].name === MAIN_TAB)
+  check('one tab per group, in the order they are declared',
+    tabs.map((t) => t.name).join(' | ') === MAIN_TAB + ' | Filters | Output')
+  check('a grouped field is on its group, not on the main tab',
+    !tabs[0].fields.some((f) => f.group))
+  check('every asked field lands on exactly one tab',
+    tabs.reduce((n, t) => n + t.fields.length, 0) === askedFields(read.inputSchema, {}).length)
+
+  // A tab says it is holding something without being opened — otherwise the
+  // only way to find a filter somebody set last month is to click every tab.
+  const filled = paramTabs(read.inputSchema, { since: '2026-01-01' })
+  check('a tab counts what is set on it', filled.find((t) => t.name === 'Filters').filled === 1)
+  check('…and counts nothing on the tabs that are empty', filled[0].filled === 0)
+  check('a default sitting in the box is not something somebody set',
+    paramTabs(read.inputSchema, { folder: 'INBOX' })[0].filled === 0)
+}
+
+console.log('\nbranching still decides what is asked')
+{
+  const read = Object.keys(builtins).map((k) => builtins[k]).find((d) => d.name === 'email-read')
+  const off = paramTabs(read.inputSchema, {})[0].fields.map((f) => f.name)
+  const on = paramTabs(read.inputSchema, { useCustomConnection: true })[0].fields.map((f) => f.name)
+  check('a branched-away field is on no tab at all', !off.includes('connection'))
+  check('…and appears once the branch is taken', on.includes('connection'))
+
+  // The caller has to cope with the tab it was showing going away: an action
+  // whose whole group is branched away must not leave a tab pointing at
+  // nothing.
+  const every = Object.keys(builtins).map((k) => builtins[k]).filter((d) => d && Array.isArray(d.inputSchema))
+  let empty = []
+  every.forEach((d) => paramTabs(d.inputSchema, {}).forEach((t) => { if (!t.fields.length) empty.push(d.name + '.' + t.name) }))
+  check('no tab is ever empty: ' + (empty.join(', ') || 'none'), empty.length === 0)
+
+  let lost = []
+  every.forEach((d) => {
+    const drawn = paramTabs(d.inputSchema, {}).reduce((n, t) => n + t.fields.length, 0)
+    if (drawn !== askedFields(d.inputSchema, {}).length) lost.push(d.name)
+  })
+  check('no field is dropped or duplicated across every shipped schema: ' + (lost.join(', ') || 'none'), lost.length === 0)
+  check('an action with no inputs has no tabs', paramTabs([], {}).length === 0)
 }
 
 const failed = results.filter(([, ok]) => !ok)
