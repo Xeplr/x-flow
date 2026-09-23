@@ -252,7 +252,11 @@
   padding: 10px 14px;
   border-bottom: 1px solid var(--xeplr-border-primary, #e3e0d8);
 }
-.fc-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+/* HIDDEN, not auto: what goes in here (a form designer) manages its own
+   panes and their scrolling. A scrollbar on the window instead pushes the
+   palette and the property panel off the edge, and the canvas is left looking
+   like the whole thing. */
+.fc-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .fc-modal-body > * { flex: 1; min-height: 0; }
 
 /* ── the step's own output ───────────────────────────────────────────── */
